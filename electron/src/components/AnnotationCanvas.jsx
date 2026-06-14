@@ -5,7 +5,6 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  RotateCw,
   MousePointer2,
   Square,
   Trash2,
@@ -92,6 +91,7 @@ function ensureOBBRect() {
 
 export default function AnnotationCanvas({
   projectId,
+  taskType = 'obb',
   frame,
   annotations,
   classes,
@@ -103,6 +103,9 @@ export default function AnnotationCanvas({
   saveRef,
   selectAnnotationRef,
 }) {
+  const isSegment = taskType === 'segment';
+  const isObb = taskType === 'obb';
+  const isDetect = taskType === 'detect';
   const fabricRef = useRef(null);
   const containerRef = useRef(null);
   const imageRef = useRef(null);
@@ -122,6 +125,10 @@ export default function AnnotationCanvas({
   const isDrawingRef = useRef(false);
   const drawStartRef = useRef(null);
   const drawRectRef = useRef(null);
+  // Segment polygon-in-progress: scene-space vertices + preview objects.
+  const polyPointsRef = useRef([]);
+  const polyPreviewRef = useRef(null);
+  const polyMarkersRef = useRef([]);
   const skipRedrawRef = useRef(false);
   const saveTimerRef = useRef(null);
   const pendingSaveRef = useRef(false);
@@ -206,6 +213,10 @@ export default function AnnotationCanvas({
 
     undoStackRef.current = [];
     redoStackRef.current = [];
+    // Stale polygon-in-progress markers belong to the old canvas; drop them.
+    polyPointsRef.current = [];
+    polyPreviewRef.current = null;
+    polyMarkersRef.current = [];
 
     if (fabricRef.current) {
       fabricRef.current.dispose();
@@ -252,6 +263,12 @@ export default function AnnotationCanvas({
     canvas.on('mouse:down', (opt) => handleMouseDown(opt, canvas));
     canvas.on('mouse:move', (opt) => handleMouseMove(opt, canvas));
     canvas.on('mouse:up', (opt) => handleMouseUp(opt, canvas));
+    // Double-click closes the segment polygon in progress.
+    canvas.on('mouse:dblclick', () => {
+      if (modeRef.current === MODES.DRAW && polyPointsRef.current.length >= 3) {
+        finishPolygon();
+      }
+    });
 
     canvas.on('selection:created', (e) => {
       if (e.selected && e.selected.length === 1) {
@@ -417,6 +434,12 @@ export default function AnnotationCanvas({
   }
 
   function drawAnnotation(canvas, ann) {
+    // Segment annotations (with a polygon) render as a fabric.Polygon.
+    if (ann.points && ann.points.length >= 3) {
+      drawPolygonAnnotation(canvas, ann);
+      return;
+    }
+
     const cls = classes.find((c) => c.id === ann.class_id);
     const color = cls?.color || '#3b82f6';
     const label = cls?.name || `Класс ${ann.class_id}`;
@@ -427,7 +450,8 @@ export default function AnnotationCanvas({
     const annAngle = ann.angle || 0;
     const annHeading = (ann.heading === undefined || ann.heading === null) ? annAngle : ann.heading;
 
-    const RectClass = ensureOBBRect() || fabric.Rect;
+    // Detect = axis-aligned box (no rotation/heading); OBB = rotatable arrow box.
+    const RectClass = isDetect ? fabric.Rect : (ensureOBBRect() || fabric.Rect);
     const rect = new RectClass({
       width: w,
       height: h,
@@ -447,6 +471,9 @@ export default function AnnotationCanvas({
       cornerSize: 8,
       cornerStyle: 'circle',
       rotatingPointOffset: 30,
+      // Detect boxes never rotate — hide the rotation handle and lock the angle.
+      lockRotation: isDetect,
+      hasRotatingPoint: !isDetect,
       padding: 0,
       objectCaching: false,
       annotationData: {
@@ -478,6 +505,175 @@ export default function AnnotationCanvas({
     canvas.add(rect);
     canvas.add(text);
     labelMapRef.current[ann.id] = text;
+  }
+
+  // Convert a fabric.Polygon's vertices to normalized image coords using its
+  // transform matrix, so moves/scales of the polygon are reflected on save.
+  function polygonToNormalized(polyObj) {
+    if (!imageRef.current || !polyObj?.points) return [];
+    const m = polyObj.calcTransformMatrix();
+    const offX = polyObj.pathOffset?.x || 0;
+    const offY = polyObj.pathOffset?.y || 0;
+    return polyObj.points.map((p) => {
+      const scene = fabric.util.transformPoint({ x: p.x - offX, y: p.y - offY }, m);
+      return normalizeCoords(scene.x, scene.y);
+    }).map((n) => [n.cx, n.cy]);
+  }
+
+  function drawPolygonAnnotation(canvas, ann) {
+    const cls = classes.find((c) => c.id === ann.class_id);
+    const color = cls?.color || '#3b82f6';
+    const label = cls?.name || `Класс ${ann.class_id}`;
+
+    const scenePoints = ann.points.map(([nx, ny]) => {
+      const { x, y } = canvasFromNormalized(nx, ny);
+      return { x, y };
+    });
+
+    const poly = new fabric.Polygon(scenePoints, {
+      fill: `${color}33`,
+      stroke: color,
+      strokeWidth: 2,
+      strokeUniform: true,
+      objectCaching: false,
+      perPixelTargetFind: true,
+      hasRotatingPoint: false,
+      annotationData: {
+        id: ann.id,
+        class_id: ann.class_id,
+        cx: ann.cx,
+        cy: ann.cy,
+        width: ann.width,
+        height: ann.height,
+        points: ann.points,
+        is_verified: ann.is_verified,
+      },
+    });
+
+    const { x, y } = canvasFromNormalized(ann.cx, ann.cy);
+    const { h } = canvasSizeFromNormalized(ann.width, ann.height);
+    const text = new fabric.Text(label, {
+      fontSize: 11,
+      fill: '#fff',
+      backgroundColor: color,
+      padding: 3,
+      originX: 'center',
+      originY: 'bottom',
+      left: x,
+      top: y - h / 2 - 4,
+      selectable: false,
+      evented: false,
+    });
+
+    canvas.add(poly);
+    canvas.add(text);
+    labelMapRef.current[ann.id] = text;
+  }
+
+  function clearPolygonDraft() {
+    const canvas = fabricRef.current;
+    if (canvas) {
+      if (polyPreviewRef.current) canvas.remove(polyPreviewRef.current);
+      polyMarkersRef.current.forEach((m) => canvas.remove(m));
+      canvas.renderAll();
+    }
+    polyPreviewRef.current = null;
+    polyMarkersRef.current = [];
+    polyPointsRef.current = [];
+  }
+
+  function renderPolygonDraft() {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    if (polyPreviewRef.current) canvas.remove(polyPreviewRef.current);
+    polyMarkersRef.current.forEach((m) => canvas.remove(m));
+    polyMarkersRef.current = [];
+
+    const pts = polyPointsRef.current;
+    if (pts.length === 0) { canvas.renderAll(); return; }
+
+    const cls = classes.find((c) => c.id === selectedClassId);
+    const color = cls?.color || '#3b82f6';
+
+    if (pts.length >= 2) {
+      const line = new fabric.Polyline(pts.map((p) => ({ x: p.x, y: p.y })), {
+        fill: 'transparent',
+        stroke: color,
+        strokeWidth: 2,
+        strokeDashArray: [4, 4],
+        selectable: false,
+        evented: false,
+        objectCaching: false,
+      });
+      polyPreviewRef.current = line;
+      canvas.add(line);
+    }
+    pts.forEach((p, i) => {
+      const dot = new fabric.Circle({
+        left: p.x, top: p.y, radius: 4,
+        fill: i === 0 ? '#ffffff' : color,
+        stroke: color, strokeWidth: 1,
+        originX: 'center', originY: 'center',
+        selectable: false, evented: false, objectCaching: false,
+      });
+      polyMarkersRef.current.push(dot);
+      canvas.add(dot);
+    });
+    canvas.renderAll();
+  }
+
+  function addPolygonPoint(scenePt) {
+    const pts = polyPointsRef.current;
+    // Click near the first vertex closes the polygon.
+    if (pts.length >= 3) {
+      const first = pts[0];
+      const d = Math.hypot(scenePt.x - first.x, scenePt.y - first.y);
+      const closeThresh = 10 / (fabricRef.current?.getZoom() || 1);
+      if (d <= closeThresh) {
+        finishPolygon();
+        return;
+      }
+    }
+    pts.push({ x: scenePt.x, y: scenePt.y });
+    renderPolygonDraft();
+  }
+
+  async function finishPolygon() {
+    const pts = polyPointsRef.current;
+    if (pts.length < 3) {
+      addToast('Нужно минимум 3 точки для полигона', 'warning', 2000);
+      return;
+    }
+    if (!selectedClassId) {
+      addToast('Выберите класс перед разметкой', 'warning');
+      return;
+    }
+    const normPoints = pts.map((p) => {
+      const n = normalizeCoords(p.x, p.y);
+      return [n.cx, n.cy];
+    });
+    clearPolygonDraft();
+    await createSegmentAnnotation(normPoints);
+  }
+
+  async function createSegmentAnnotation(normPoints) {
+    const canvas = fabricRef.current;
+    if (!canvas || !frame) return;
+    try {
+      pushUndo();
+      const res = await apiClient.createAnnotation(frame.id, {
+        class_id: selectedClassId,
+        cx: 0, cy: 0, width: 0.0001, height: 0.0001, angle: 0,
+        points: normPoints,
+      });
+      const newAnn = res.data;
+      updateAnnotationLocal(frame.id, newAnn);
+      drawAnnotation(canvas, newAnn);
+      canvas.renderAll();
+      addToast('Полигон создан', 'success', 2000);
+    } catch (e) {
+      addToast('Ошибка создания полигона', 'error');
+    }
   }
 
   function clearAnnotations() {
@@ -526,6 +722,30 @@ export default function AnnotationCanvas({
     const data = getAnnotationFromObject(obj);
     if (!data || !data.id) return;
 
+    // Polygon (segment) annotations: recompute vertices from the transform.
+    if (data.points && obj.type === 'polygon') {
+      const newPoints = polygonToNormalized(obj);
+      if (!newPoints.length) return;
+      const xs = newPoints.map((p) => p[0]);
+      const ys = newPoints.map((p) => p[1]);
+      const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+      const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+      const width = Math.max(...xs) - Math.min(...xs);
+      const height = Math.max(...ys) - Math.min(...ys);
+      const newData = { ...data, points: newPoints, cx, cy, width, height };
+      obj.annotationData = newData;
+      skipRedrawRef.current = true;
+      updateAnnotationLocal(frame.id, newData);
+      const labelObj = labelMapRef.current[data.id];
+      if (labelObj && imageRef.current) {
+        const { x, y } = canvasFromNormalized(cx, cy);
+        const { h } = canvasSizeFromNormalized(width, height);
+        labelObj.set({ left: x, top: y - h / 2 - 4 });
+      }
+      debouncedSave(data.id, { points: newPoints });
+      return;
+    }
+
     const updated = updateAnnotationFromRect(obj);
     if (!updated) return;
 
@@ -553,7 +773,22 @@ export default function AnnotationCanvas({
 
   function debouncedSave(annotationId, data) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    pendingSaveRef.current = { id: annotationId, data };
+    const pending = pendingSaveRef.current;
+    if (pending && pending.id !== annotationId) {
+      // A different annotation is still queued — flush it now so its fields are
+      // never dropped by the incoming save.
+      apiClient.updateAnnotation(pending.id, pending.data).catch((e) => {
+        console.error('Auto-save failed:', e);
+      });
+      pendingSaveRef.current = { id: annotationId, data };
+    } else {
+      // Same annotation: merge field-by-field so an earlier geometry edit isn't
+      // overwritten by a later heading-only edit (or vice versa).
+      pendingSaveRef.current = {
+        id: annotationId,
+        data: { ...(pending?.data || {}), ...data },
+      };
+    }
     saveTimerRef.current = setTimeout(async () => {
       if (!pendingSaveRef.current) return;
       const { id, data: saveData } = pendingSaveRef.current;
@@ -603,6 +838,12 @@ export default function AnnotationCanvas({
     }
 
     if (currentMode === MODES.DRAW) {
+      // Segment projects build a polygon click-by-click instead of a box.
+      if (isSegment) {
+        const pointer = canvas.getPointer(evt);
+        addPolygonPoint(pointer);
+        return;
+      }
       const target = canvas.findTarget(evt, false);
       if (target && target.annotationData) {
         canvas.setActiveObject(target);
@@ -812,10 +1053,11 @@ export default function AnnotationCanvas({
       const res = await apiClient.samPoint(frame.id, pxX, pxY);
       const obb = res.data;
 
-      const createRes = await apiClient.createAnnotation(frame.id, {
-        class_id: selectedClassId,
-        cx: obb.cx, cy: obb.cy, width: obb.width, height: obb.height, angle: obb.angle,
-      });
+      // Segment projects store the SAM polygon; box-based projects store the OBB.
+      const payload = (isSegment && obb.points && obb.points.length >= 3)
+        ? { class_id: selectedClassId, cx: 0, cy: 0, width: 0.0001, height: 0.0001, angle: 0, points: obb.points }
+        : { class_id: selectedClassId, cx: obb.cx, cy: obb.cy, width: obb.width, height: obb.height, angle: obb.angle };
+      const createRes = await apiClient.createAnnotation(frame.id, payload);
 
       const newAnn = createRes.data;
       updateAnnotationLocal(frame.id, newAnn);
@@ -854,10 +1096,10 @@ export default function AnnotationCanvas({
       const res = await apiClient.samBox(frame.id, x1, y1, x2, y2);
       const obb = res.data;
 
-      const createRes = await apiClient.createAnnotation(frame.id, {
-        class_id: selectedClassId,
-        cx: obb.cx, cy: obb.cy, width: obb.width, height: obb.height, angle: obb.angle,
-      });
+      const payload = (isSegment && obb.points && obb.points.length >= 3)
+        ? { class_id: selectedClassId, cx: 0, cy: 0, width: 0.0001, height: 0.0001, angle: 0, points: obb.points }
+        : { class_id: selectedClassId, cx: obb.cx, cy: obb.cy, width: obb.width, height: obb.height, angle: obb.angle };
+      const createRes = await apiClient.createAnnotation(frame.id, payload);
 
       const newAnn = createRes.data;
       updateAnnotationLocal(frame.id, newAnn);
@@ -969,6 +1211,20 @@ export default function AnnotationCanvas({
 
     const canvas = fabricRef.current;
 
+    // Segment polygon controls: Enter closes, Escape cancels the draft.
+    if (isSegment && polyPointsRef.current.length > 0) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finishPolygon();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        clearPolygonDraft();
+        return;
+      }
+    }
+
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       const active = canvas?.getActiveObject();
@@ -991,23 +1247,11 @@ export default function AnnotationCanvas({
       onFrameNavigate(e.key === 'ArrowLeft' ? -1 : 1);
     }
 
-    // Heading arrow (does NOT move the box): F / Shift+F = +/-90°.
-    if (e.key.toLowerCase() === 'f' && !e.ctrlKey) {
+    // Heading arrow (does NOT move the box): F steps the direction by 90°.
+    // Only meaningful for OBB projects.
+    if (isObb && e.key.toLowerCase() === 'f' && !e.ctrlKey) {
       e.preventDefault();
-      rotateHeading(e.shiftKey ? -90 : 90);
-    }
-    // Box outline rotation: R / Shift+R = +/-90°, Q / E = -/+5°.
-    if (e.key.toLowerCase() === 'r' && !e.ctrlKey) {
-      e.preventDefault();
-      rotateBox(e.shiftKey ? -90 : 90);
-    }
-    if (e.key === 'q') {
-      e.preventDefault();
-      rotateBox(-5);
-    }
-    if (e.key === 'e') {
-      e.preventDefault();
-      rotateBox(5);
+      rotateHeading(90);
     }
   }
 
@@ -1072,27 +1316,6 @@ export default function AnnotationCanvas({
     return active;
   }
 
-  // Rotate the box OUTLINE by `delta` degrees (changes geometry). The heading
-  // arrow stays on the same side of the box (headingOffset is preserved).
-  function rotateBox(delta) {
-    const active = getActiveAnnotated();
-    if (!active) return;
-    const canvas = fabricRef.current;
-    pushUndo();
-    const data = active.annotationData;
-    const newAngle = wrapAngle((data.angle || 0) + delta);
-    const newHeading = wrapAngle(newAngle + (active.headingOffset || 0));
-
-    active.set('angle', newAngle);
-    active.annotationData = { ...data, angle: newAngle, heading: newHeading };
-    active.setCoords();
-    canvas.renderAll();
-
-    skipRedrawRef.current = true;
-    updateAnnotationLocal(frame.id, { ...data, angle: newAngle, heading: newHeading });
-    debouncedSave(data.id, { angle: newAngle, heading: newHeading });
-  }
-
   // Rotate ONLY the heading arrow by `delta` degrees. The box outline
   // (cx, cy, width, height, angle) is never touched, so it cannot shift.
   function rotateHeading(delta) {
@@ -1153,31 +1376,27 @@ export default function AnnotationCanvas({
           </button>
         )}
 
-        <div className="h-5 w-px bg-slate-700 mx-1" />
+        {isObb && <div className="h-5 w-px bg-slate-700 mx-1" />}
 
-        {/* Heading arrow — re-points the arrow only, never moves the box */}
-        <button className="tool-btn" onClick={() => rotateHeading(-90)} title="Повернуть стрелку −90° (Shift+F)">
-          <RotateCcw size={16} className="text-emerald-400" />
-        </button>
-        <button
-          className="tool-btn"
-          onClick={() => rotateHeading(90)}
-          title="Направление стрелки: жмите сколько нужно, обводка не двигается (F)"
-        >
-          <Navigation size={16} className="text-emerald-400" />
-          <span className="hidden lg:inline text-xs ml-1">Направление</span>
-        </button>
+        {/* Heading arrow — sets the object's direction; never moves the box.
+            Each press steps the direction by 90°, which maps 1:1 to the front
+            edge encoded in the exported YOLOv8-OBB label. OBB-only. */}
+        {isObb && (
+          <button
+            className="tool-btn"
+            onClick={() => rotateHeading(90)}
+            title="Направление объекта: жмите сколько нужно, обводка не двигается (F)"
+          >
+            <Navigation size={16} className="text-emerald-400" />
+            <span className="hidden lg:inline text-xs ml-1">Направление</span>
+          </button>
+        )}
 
-        <div className="h-5 w-px bg-slate-700 mx-1" />
-
-        {/* Box outline rotation — changes the box geometry */}
-        <button className="tool-btn" onClick={() => rotateBox(-90)} title="Повернуть БОКС −90° (Shift+R)">
-          <RotateCcw size={16} />
-        </button>
-        <button className="tool-btn" onClick={() => rotateBox(90)} title="Повернуть БОКС +90° (R)">
-          <RotateCw size={16} />
-          <span className="hidden lg:inline text-xs ml-1">Бокс</span>
-        </button>
+        {isSegment && (
+          <span className="text-xs text-slate-400 ml-2 hidden lg:inline">
+            Полигон: клик — точка, двойной клик / Enter — замкнуть
+          </span>
+        )}
 
         <div className="flex-1" />
 

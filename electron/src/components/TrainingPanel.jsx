@@ -49,11 +49,18 @@ function historyToRows(history) {
   });
 }
 
-export default function TrainingPanel({ projectId, onClose }) {
+const TASK_TITLE = {
+  obb: 'Обучение YOLO-OBB',
+  detect: 'Обучение YOLO Detect',
+  segment: 'Обучение YOLO Segment',
+};
+
+export default function TrainingPanel({ projectId, taskType = 'obb', onClose }) {
   const { addToast } = useApp();
 
-  const [baseModels, setBaseModels] = useState(['yolov8n-obb.pt']);
-  const [baseModel, setBaseModel] = useState('yolov8n-obb.pt');
+  const defaultModel = { obb: 'yolov8n-obb.pt', detect: 'yolov8n.pt', segment: 'yolov8n-seg.pt' }[taskType] || 'yolov8n-obb.pt';
+  const [baseModels, setBaseModels] = useState([defaultModel]);
+  const [baseModel, setBaseModel] = useState(defaultModel);
   const [epochs, setEpochs] = useState(100);
   const [imgsz, setImgsz] = useState(640);
   const [batch, setBatch] = useState(16);
@@ -92,7 +99,7 @@ export default function TrainingPanel({ projectId, onClose }) {
   }, []);
 
   useEffect(() => {
-    apiClient.getBaseModels().then((res) => {
+    apiClient.getBaseModels(taskType).then((res) => {
       if (res.data?.models?.length) {
         setBaseModels(res.data.models);
         setBaseModel(res.data.models[0]);
@@ -223,6 +230,10 @@ export default function TrainingPanel({ projectId, onClose }) {
     { key: 'val_cls_loss', name: 'val cls', color: '#fb923c' },
     { key: 'train_dfl_loss', name: 'train dfl', color: '#a855f7' },
     { key: 'val_dfl_loss', name: 'val dfl', color: '#c084fc' },
+    ...(taskType === 'segment' ? [
+      { key: 'train_seg_loss', name: 'train seg', color: '#10b981' },
+      { key: 'val_seg_loss', name: 'val seg', color: '#34d399' },
+    ] : []),
   ];
   const mapKeys = [
     { key: 'map50', name: 'mAP50', color: '#22c55e' },
@@ -242,7 +253,7 @@ export default function TrainingPanel({ projectId, onClose }) {
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Activity size={20} className="text-blue-400" />
-            Обучение YOLOv8-OBB
+            {TASK_TITLE[taskType] || 'Обучение YOLO'}
           </h2>
           <div className="flex items-center gap-2">
             <button

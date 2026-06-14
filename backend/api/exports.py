@@ -91,12 +91,17 @@ async def export_dataset(
         seed=42,
     )
 
-    if data.format == "yolov8-obb":
-        await export_service.export_yolov8_obb(
+    # The project's task type is the source of truth for the YOLO label format.
+    task_type = project.task_type or "obb"
+    yolo_formats = {"yolov8-obb": "obb", "yolov8-detect": "detect", "yolov8-seg": "segment"}
+
+    if data.format in yolo_formats:
+        await export_service.export_yolo(
             project_id=project_id,
             output_dir=export_dir,
             classes=classes,
             splits=splits,
+            task_type=task_type,
         )
     elif data.format == "coco":
         await export_service.export_coco(
@@ -115,10 +120,16 @@ async def export_dataset(
 
     await ws_manager.send_progress(task_id, 60, "Export structure created...")
 
-    # Apply augmentations on training set if requested (YOLOv8-OBB layout only).
-    if data.apply_augmentation and data.format == "yolov8-obb" and data.augmentation_count > 0:
+    # Apply augmentations on the training set if requested. Supported for the
+    # box-based tasks (obb/detect); segment polygons aren't augmented here.
+    aug_supported = data.format in ("yolov8-obb", "yolov8-detect") and task_type in ("obb", "detect")
+    if data.apply_augmentation and data.format == "yolov8-seg":
+        await ws_manager.send_progress(
+            task_id, 65, "Аугментация пропущена: не поддерживается для сегментации."
+        )
+    if data.apply_augmentation and aug_supported and data.augmentation_count > 0:
         from PIL import Image as _PILImage
-        from backend.services.geometry import yolo_obb_line
+        from backend.services.geometry import yolo_obb_line, yolo_detect_line
 
         await ws_manager.send_progress(task_id, 65, "Applying augmentations to training set...")
 
@@ -172,12 +183,19 @@ async def export_dataset(
 
                 lbl_lines = []
                 for a in aug_result["annotations"]:
-                    lbl_lines.append(
-                        yolo_obb_line(
-                            a["class_idx"], a["cx"], a["cy"], a["width"], a["height"],
-                            a["angle"], aw, ah,
+                    if task_type == "detect":
+                        lbl_lines.append(
+                            yolo_detect_line(
+                                a["class_idx"], a["cx"], a["cy"], a["width"], a["height"],
+                            )
                         )
-                    )
+                    else:
+                        lbl_lines.append(
+                            yolo_obb_line(
+                                a["class_idx"], a["cx"], a["cy"], a["width"], a["height"],
+                                a["angle"], aw, ah,
+                            )
+                        )
 
                 if lbl_lines:
                     with open(lbl_path, "w") as f:
@@ -203,7 +221,12 @@ async def export_dataset(
 
 
 @router.get("/{project_id}/list")
-async def list_exports(project_id: int):
+async def list_exports(project_id: int, db: AsyncSession = Depends(get_db)):
+    project = await db.get(Project, project_id)
+    yolo_format = {
+        "detect": "yolov8-detect", "segment": "yolov8-seg", "obb": "yolov8-obb",
+    }.get((project.task_type if project else "obb") or "obb", "yolov8-obb")
+
     export_base = os.path.join(config.DATA_DIR, "projects", str(project_id), "exports")
     if not os.path.exists(export_base):
         return []
@@ -228,7 +251,7 @@ async def list_exports(project_id: int):
             exports.append({
                 "id": name,
                 "filename": name,
-                "format": "yolov8-obb",
+                "format": yolo_format,
                 "has_zip": os.path.exists(zip_path),
                 "stats": stats,
             })

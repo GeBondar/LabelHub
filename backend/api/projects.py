@@ -12,9 +12,13 @@ from backend.models.project import Project, ClassLabel
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
+TASK_TYPES = {"detect", "segment", "obb"}
+
+
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str = ""
+    task_type: str = Field(default="obb", pattern=r"^(detect|segment|obb)$")
 
 
 class ProjectUpdate(BaseModel):
@@ -31,6 +35,7 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     description: Optional[str]
+    task_type: str = "obb"
     created_at: Optional[str]
     updated_at: Optional[str]
     class_count: int = 0
@@ -51,7 +56,7 @@ class ClassLabelOut(BaseModel):
 
 @router.post("/", response_model=ProjectOut)
 async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)):
-    project = Project(name=data.name, description=data.description)
+    project = Project(name=data.name, description=data.description, task_type=data.task_type)
     db.add(project)
     await db.flush()
     await db.refresh(project)
@@ -59,6 +64,7 @@ async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)
         id=project.id,
         name=project.name,
         description=project.description,
+        task_type=project.task_type,
         created_at=str(project.created_at) if project.created_at else None,
         updated_at=str(project.updated_at) if project.updated_at else None,
         class_count=0,
@@ -94,6 +100,7 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             id=p.id,
             name=p.name,
             description=p.description,
+            task_type=p.task_type or "obb",
             created_at=str(p.created_at) if p.created_at else None,
             updated_at=str(p.updated_at) if p.updated_at else None,
             class_count=class_count,
@@ -122,6 +129,7 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
         id=project.id,
         name=project.name,
         description=project.description,
+        task_type=project.task_type or "obb",
         created_at=str(project.created_at) if project.created_at else None,
         updated_at=str(project.updated_at) if project.updated_at else None,
         class_count=class_count,

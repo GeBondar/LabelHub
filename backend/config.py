@@ -11,7 +11,9 @@ class Config:
     FFMPEG_PATH: str = "ffmpeg"
     FFPROBE_PATH: str = "ffprobe"
     MAX_FRAME_DIMENSION: int = 1920
-    EXPORT_FORMATS: list[str] = ["yolov8-obb", "coco", "pascal-voc"]
+    EXPORT_FORMATS: list[str] = [
+        "yolov8-obb", "yolov8-detect", "yolov8-seg", "coco", "pascal-voc"
+    ]
     SERVER_HOST: str = "0.0.0.0"
     SERVER_PORT: int = 8787
 

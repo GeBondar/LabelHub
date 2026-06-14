@@ -1,3 +1,4 @@
+import json
 import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,7 +11,7 @@ from backend.database import get_db
 from backend.models.annotation import Frame, OrientedBBox
 from backend.models.project import ClassLabel
 from backend.services.sam2_service import sam2_service
-from backend.services.geometry import normalize_angle
+from backend.services.geometry import normalize_angle, polygon_bbox
 
 router = APIRouter(prefix="/api/annotations", tags=["annotations"])
 
@@ -23,6 +24,8 @@ class BBoxCreate(BaseModel):
     height: float = Field(..., gt=0.0, le=1.0)
     angle: float = Field(default=0.0)
     heading: Optional[float] = None
+    # Segment-project instance polygon: normalized [[x, y], ...] in [0, 1].
+    points: Optional[list[list[float]]] = None
 
 
 class BBoxUpdate(BaseModel):
@@ -33,6 +36,7 @@ class BBoxUpdate(BaseModel):
     height: Optional[float] = Field(default=None, gt=0.0, le=1.0)
     angle: Optional[float] = None
     heading: Optional[float] = None
+    points: Optional[list[list[float]]] = None
     is_verified: Optional[bool] = None
 
 
@@ -63,11 +67,40 @@ class BBoxOut(BaseModel):
     height: float
     angle: float
     heading: float
+    points: Optional[list] = None
     is_verified: bool
     created_at: Optional[str]
     updated_at: Optional[str]
 
     model_config = {"from_attributes": True}
+
+
+def _parse_points(points_json: Optional[str]) -> Optional[list]:
+    if not points_json:
+        return None
+    try:
+        return json.loads(points_json)
+    except (ValueError, TypeError):
+        return None
+
+
+def _bbox_out(bbox: OrientedBBox, class_name: Optional[str]) -> BBoxOut:
+    return BBoxOut(
+        id=bbox.id,
+        frame_id=bbox.frame_id,
+        class_id=bbox.class_id,
+        class_name=class_name,
+        cx=bbox.cx,
+        cy=bbox.cy,
+        width=bbox.width,
+        height=bbox.height,
+        angle=bbox.angle,
+        heading=bbox.heading if bbox.heading is not None else bbox.angle,
+        points=_parse_points(bbox.points_json),
+        is_verified=bbox.is_verified,
+        created_at=str(bbox.created_at) if bbox.created_at else None,
+        updated_at=str(bbox.updated_at) if bbox.updated_at else None,
+    )
 
 
 def _obb_to_polygon(cx: float, cy: float, width: float, height: float, angle: float, img_w: int, img_h: int) -> Polygon:
@@ -118,17 +151,26 @@ async def create_bbox(
     if not cls:
         raise HTTPException(status_code=404, detail="Class label not found")
 
+    cx, cy, width, height = data.cx, data.cy, data.width, data.height
+    points_json = None
+    # A segmentation polygon defines the shape; derive the bounding rect from it
+    # so cx/cy/width/height stay consistent with the stored points.
+    if data.points and len(data.points) >= 3:
+        cx, cy, width, height = polygon_bbox(data.points)
+        points_json = json.dumps(data.points)
+
     angle = normalize_angle(data.angle)
     heading = normalize_angle(data.heading) if data.heading is not None else angle
     bbox = OrientedBBox(
         frame_id=frame_id,
         class_id=data.class_id,
-        cx=data.cx,
-        cy=data.cy,
-        width=data.width,
-        height=data.height,
+        cx=cx,
+        cy=cy,
+        width=max(1e-6, width),
+        height=max(1e-6, height),
         angle=angle,
         heading=heading,
+        points_json=points_json,
     )
     db.add(bbox)
     await db.flush()
@@ -136,21 +178,7 @@ async def create_bbox(
 
     frame.is_labeled = True
 
-    return BBoxOut(
-        id=bbox.id,
-        frame_id=bbox.frame_id,
-        class_id=bbox.class_id,
-        class_name=cls.name,
-        cx=bbox.cx,
-        cy=bbox.cy,
-        width=bbox.width,
-        height=bbox.height,
-        angle=bbox.angle,
-        heading=bbox.heading if bbox.heading is not None else bbox.angle,
-        is_verified=bbox.is_verified,
-        created_at=str(bbox.created_at) if bbox.created_at else None,
-        updated_at=str(bbox.updated_at) if bbox.updated_at else None,
-    )
+    return _bbox_out(bbox, cls.name)
 
 
 @router.get("/frame/{frame_id}", response_model=list[BBoxOut])
@@ -167,21 +195,7 @@ async def get_frame_annotations(frame_id: int, db: AsyncSession = Depends(get_db
     out = []
     for b in bboxes:
         cls = await db.get(ClassLabel, b.class_id)
-        out.append(BBoxOut(
-            id=b.id,
-            frame_id=b.frame_id,
-            class_id=b.class_id,
-            class_name=cls.name if cls else None,
-            cx=b.cx,
-            cy=b.cy,
-            width=b.width,
-            height=b.height,
-            angle=b.angle,
-            heading=b.heading if b.heading is not None else b.angle,
-            is_verified=b.is_verified,
-            created_at=str(b.created_at) if b.created_at else None,
-            updated_at=str(b.updated_at) if b.updated_at else None,
-        ))
+        out.append(_bbox_out(b, cls.name if cls else None))
     return out
 
 
@@ -196,6 +210,9 @@ async def update_bbox(
         raise HTTPException(status_code=404, detail="Annotation not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    # A new polygon redefines the shape: store it and recompute the bbox fields,
+    # which take precedence over any cx/cy/width/height passed alongside.
+    new_points = update_data.pop("points", None)
     for key, value in update_data.items():
         if value is None:
             continue
@@ -203,27 +220,22 @@ async def update_bbox(
             value = normalize_angle(value)
         setattr(bbox, key, value)
 
+    if new_points is not None:
+        if len(new_points) >= 3:
+            bbox.points_json = json.dumps(new_points)
+            cx, cy, width, height = polygon_bbox(new_points)
+            bbox.cx, bbox.cy = cx, cy
+            bbox.width, bbox.height = max(1e-6, width), max(1e-6, height)
+        else:
+            bbox.points_json = None
+
     bbox.updated_at = datetime.datetime.utcnow()
     await db.flush()
     await db.refresh(bbox)
 
     cls = await db.get(ClassLabel, bbox.class_id)
 
-    return BBoxOut(
-        id=bbox.id,
-        frame_id=bbox.frame_id,
-        class_id=bbox.class_id,
-        class_name=cls.name if cls else None,
-        cx=bbox.cx,
-        cy=bbox.cy,
-        width=bbox.width,
-        height=bbox.height,
-        angle=bbox.angle,
-        heading=bbox.heading if bbox.heading is not None else bbox.angle,
-        is_verified=bbox.is_verified,
-        created_at=str(bbox.created_at) if bbox.created_at else None,
-        updated_at=str(bbox.updated_at) if bbox.updated_at else None,
-    )
+    return _bbox_out(bbox, cls.name if cls else None)
 
 
 @router.delete("/{bbox_id}")

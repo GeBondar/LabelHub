@@ -30,9 +30,12 @@ _METRIC_KEYS = {
     "train_box_loss": "train/box_loss",
     "train_cls_loss": "train/cls_loss",
     "train_dfl_loss": "train/dfl_loss",
+    # Segmentation runs add a mask-loss column; harmless for detect/obb (absent).
+    "train_seg_loss": "train/seg_loss",
     "val_box_loss": "val/box_loss",
     "val_cls_loss": "val/cls_loss",
     "val_dfl_loss": "val/dfl_loss",
+    "val_seg_loss": "val/seg_loss",
     "precision": "metrics/precision",
     "recall": "metrics/recall",
     "map50": "metrics/mAP50(",
@@ -63,8 +66,11 @@ class TrainingService:
     async def prepare_dataset(self, project_id: int, db, val_ratio: float = 0.2) -> str:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
-        from backend.models.project import ClassLabel
+        from backend.models.project import Project, ClassLabel
         from backend.models.annotation import Frame
+
+        project = await db.get(Project, project_id)
+        task_type = (project.task_type if project else "obb") or "obb"
 
         classes_result = await db.execute(
             select(ClassLabel).where(ClassLabel.project_id == project_id).order_by(ClassLabel.index)
@@ -115,11 +121,12 @@ class TrainingService:
             shutil.rmtree(dataset_dir, ignore_errors=True)
         os.makedirs(dataset_dir, exist_ok=True)
 
-        await export_service.export_yolov8_obb(
+        await export_service.export_yolo(
             project_id=project_id,
             output_dir=dataset_dir,
             classes=classes,
             splits=splits,
+            task_type=task_type,
         )
         return dataset_dir
 

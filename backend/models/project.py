@@ -11,6 +11,11 @@ class Project(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, default="")
+    # Network task this project's annotations target: "detect" (axis-aligned
+    # boxes), "segment" (instance polygons), or "obb" (oriented boxes). Fixed at
+    # creation; drives annotation tools, storage, export and training. Existing
+    # projects default to "obb" (the only type before this feature).
+    task_type = Column(String(16), nullable=False, default="obb")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

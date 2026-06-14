@@ -116,6 +116,64 @@ def yolo_obb_line(
     return f"{class_idx} {coords}"
 
 
+def yolo_detect_line(
+    class_idx: int,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+) -> str:
+    """Format one Ultralytics YOLO detect label line: ``class cx cy w h``.
+
+    All coordinates are already normalized to [0, 1]. Values are clamped so a
+    box edge that slightly overshoots the image never breaks the dataset.
+    """
+    cx = min(1.0, max(0.0, cx))
+    cy = min(1.0, max(0.0, cy))
+    width = min(1.0, max(0.0, width))
+    height = min(1.0, max(0.0, height))
+    return f"{class_idx} {cx:.6f} {cy:.6f} {width:.6f} {height:.6f}"
+
+
+def yolo_segment_line(
+    class_idx: int,
+    points: List[Tuple[float, float]],
+) -> str:
+    """Format one Ultralytics YOLO-seg label line: ``class x1 y1 ... xn yn``.
+
+    `points` are already normalized to [0, 1] (polygon vertices). Coordinates
+    are clamped into range.
+    """
+    coords = " ".join(
+        f"{min(1.0, max(0.0, x)):.6f} {min(1.0, max(0.0, y)):.6f}"
+        for x, y in points
+    )
+    return f"{class_idx} {coords}"
+
+
+def polygon_bbox(
+    points: List[Tuple[float, float]],
+) -> Tuple[float, float, float, float]:
+    """Return the axis-aligned bounding rect (cx, cy, w, h) of a polygon.
+
+    Works in whatever coordinate space the points are given (normalized or
+    pixel); the result is in the same space. Used to keep an annotation's
+    cx/cy/width/height in sync with its segmentation polygon.
+    """
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    if not xs or not ys:
+        return 0.0, 0.0, 0.0, 0.0
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    return (
+        (x_min + x_max) / 2.0,
+        (y_min + y_max) / 2.0,
+        x_max - x_min,
+        y_max - y_min,
+    )
+
+
 def polygon_to_obb(
     points: List[Tuple[float, float]],
 ) -> Tuple[float, float, float, float, float]:

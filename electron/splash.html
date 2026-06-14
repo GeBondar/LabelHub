@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline';" />
+    <title>LabelHub</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111c33;
+        --border: #1e293b;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --faint: #64748b;
+        --accent: #3b82f6;
+        --accent2: #22d3ee;
+        --danger: #f87171;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: transparent;
+        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        color: var(--text);
+        user-select: none;
+        overflow: hidden;
+      }
+      .card {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 26px 30px;
+        background:
+          radial-gradient(120% 100% at 50% -20%, rgba(59,130,246,0.16), transparent 60%),
+          var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        -webkit-app-region: drag; /* let user move the splash */
+      }
+      .logo {
+        width: 76px; height: 76px;
+        border-radius: 18px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.04);
+        animation: float 3s ease-in-out infinite;
+      }
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+      .title {
+        font-size: 22px; font-weight: 700; letter-spacing: 0.5px;
+        margin-top: 2px;
+      }
+      .title .accent { color: var(--accent); }
+      .phase {
+        font-size: 13px; color: var(--text);
+        min-height: 18px; text-align: center;
+        transition: color 0.2s;
+      }
+      .phase.error { color: var(--danger); }
+      .bar {
+        width: 100%; height: 6px;
+        background: var(--border);
+        border-radius: 999px; overflow: hidden;
+        position: relative;
+      }
+      .bar > .fill {
+        position: absolute; top: 0; left: 0; bottom: 0;
+        width: 0%;
+        background: linear-gradient(90deg, var(--accent), var(--accent2));
+        border-radius: 999px;
+        transition: width 0.5s ease;
+      }
+      /* Indeterminate shimmer overlaid on the fill while loading. */
+      .bar.busy > .shimmer {
+        position: absolute; top: 0; bottom: 0; left: -40%;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+        animation: slide 1.1s linear infinite;
+      }
+      @keyframes slide {
+        0% { left: -40%; }
+        100% { left: 100%; }
+      }
+      .meta {
+        display: flex; align-items: center; justify-content: space-between;
+        width: 100%; margin-top: -4px;
+      }
+      .detail {
+        font-family: 'Cascadia Code', Consolas, monospace;
+        font-size: 10.5px; color: var(--faint);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        max-width: 320px;
+      }
+      .elapsed {
+        font-size: 10.5px; color: var(--faint);
+        font-variant-numeric: tabular-nums; flex-shrink: 0; margin-left: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <img class="logo" src="./build/icon.png" alt="" />
+      <div class="title">Label<span class="accent">Hub</span></div>
+      <div class="phase" id="phase">Инициализация…</div>
+      <div class="bar busy" id="bar">
+        <div class="fill" id="fill"></div>
+        <div class="shimmer"></div>
+      </div>
+      <div class="meta">
+        <div class="detail" id="detail"></div>
+        <div class="elapsed" id="elapsed">0.0s</div>
+      </div>
+    </div>
+
+    <script>
+      const phaseEl = document.getElementById('phase');
+      const detailEl = document.getElementById('detail');
+      const fillEl = document.getElementById('fill');
+      const barEl = document.getElementById('bar');
+      const elapsedEl = document.getElementById('elapsed');
+
+      const TOTAL_STEPS = 4;
+      const start = Date.now();
+      setInterval(() => {
+        elapsedEl.textContent = ((Date.now() - start) / 1000).toFixed(1) + 's';
+      }, 100);
+
+      if (window.splashAPI) {
+        window.splashAPI.onUpdate((p) => {
+          if (!p) return;
+          if (typeof p.phase === 'string') phaseEl.textContent = p.phase;
+          if (typeof p.detail === 'string') detailEl.textContent = p.detail;
+          if (typeof p.step === 'number') {
+            const pct = Math.max(0, Math.min(100, (p.step / TOTAL_STEPS) * 100));
+            fillEl.style.width = pct + '%';
+          }
+          if (p.error) {
+            phaseEl.classList.add('error');
+            barEl.classList.remove('busy');
+          }
+          if (p.done) {
+            fillEl.style.width = '100%';
+            barEl.classList.remove('busy');
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

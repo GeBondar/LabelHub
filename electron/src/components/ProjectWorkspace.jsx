@@ -84,6 +84,8 @@ export default function ProjectWorkspace() {
   const [isResizing, setIsResizing] = useState(null);
 
   const projectId = parseInt(id);
+  const taskType = currentProject?.task_type || 'obb';
+  const TASK_LABEL = { obb: 'OBB', detect: 'Detect', segment: 'Segment' };
 
   const currentFrame = frames[currentFrameIndex];
   const currentAnnotations = currentFrame ? (annotations[currentFrame.id] || []) : [];
@@ -264,6 +266,9 @@ export default function ProjectWorkspace() {
         <span className="text-sm font-medium text-slate-200 px-2 truncate max-w-[200px]">
           {currentProject.name}
         </span>
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-blue-300 border border-slate-600 uppercase flex-shrink-0">
+          {TASK_LABEL[taskType] || taskType}
+        </span>
 
         <div className="flex-1" />
 
@@ -401,6 +406,7 @@ export default function ProjectWorkspace() {
           ) : (
             <AnnotationCanvas
               projectId={projectId}
+              taskType={taskType}
               frame={currentFrame}
               annotations={currentAnnotations}
               classes={classes}
@@ -466,10 +472,17 @@ export default function ProjectWorkspace() {
               <div className="space-y-1 text-xs text-slate-400">
                 <div className="flex justify-between"><span>← →</span><span>Навигация</span></div>
                 <div className="flex justify-between"><span>1-9</span><span>Выбор класса</span></div>
-                <div className="flex justify-between"><span>F / Shift+F</span><span>Направление стрелки ±90°</span></div>
-                <div className="flex justify-between"><span>R / Shift+R</span><span>Поворот БОКСА ±90°</span></div>
-                <div className="flex justify-between"><span>Q / E</span><span>Поворот БОКСА ±5°</span></div>
-                <div className="flex justify-between"><span>Delete</span><span>Удалить bbox</span></div>
+                {taskType === 'obb' && (
+                  <>
+                    <div className="flex justify-between"><span>F / Shift+F</span><span>Направление стрелки ±90°</span></div>
+                    <div className="flex justify-between"><span>R / Shift+R</span><span>Поворот БОКСА ±90°</span></div>
+                    <div className="flex justify-between"><span>Q / E</span><span>Поворот БОКСА ±5°</span></div>
+                  </>
+                )}
+                {taskType === 'segment' && (
+                  <div className="flex justify-between"><span>Двойной клик / Enter</span><span>Замкнуть полигон</span></div>
+                )}
+                <div className="flex justify-between"><span>Delete</span><span>Удалить объект</span></div>
                 <div className="flex justify-between"><span>Ctrl+S</span><span>Сохранить</span></div>
                 <div className="flex justify-between"><span>Ctrl+Z / Shift+Z</span><span>Отмена / Повтор</span></div>
                 <div className="flex justify-between"><span>Колёсико</span><span>Масштаб</span></div>
@@ -572,6 +585,7 @@ export default function ProjectWorkspace() {
       {showExport && (
         <ExportPanel
           projectId={projectId}
+          taskType={taskType}
           onClose={() => setShowExport(false)}
         />
       )}
@@ -594,6 +608,7 @@ export default function ProjectWorkspace() {
       {showTraining && (
         <TrainingPanel
           projectId={projectId}
+          taskType={taskType}
           onClose={() => setShowTraining(false)}
         />
       )}

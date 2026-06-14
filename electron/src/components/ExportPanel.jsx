@@ -13,33 +13,57 @@ import {
 import { useApp } from '../App';
 import apiClient from '../api/client';
 
-const EXPORT_FORMATS = [
-  {
+const YOLO_FORMAT = {
+  obb: {
     id: 'yolov8-obb',
     name: 'YOLOv8-OBB',
-    desc: 'Формат YOLO с ориентированными bbox (class cx cy w h angle)',
+    desc: 'YOLO с ориентированными bbox (class x1 y1 … x4 y4)',
     ext: '.txt',
     structure: 'images/train/, images/val/, labels/train/, labels/val/',
   },
-  {
-    id: 'coco',
-    name: 'COCO',
-    desc: 'COCO JSON с сегментацией из OBB',
-    ext: '.json',
-    structure: 'annotations/instances_train.json, annotations/instances_val.json',
+  detect: {
+    id: 'yolov8-detect',
+    name: 'YOLOv8 Detect',
+    desc: 'YOLO детекция (class cx cy w h)',
+    ext: '.txt',
+    structure: 'images/train/, images/val/, labels/train/, labels/val/',
   },
-  {
-    id: 'pascal-voc',
-    name: 'Pascal VOC',
-    desc: 'Pascal VOC XML (ротация как robndbox)',
-    ext: '.xml',
-    structure: 'Annotations/, ImageSets/Main/, JPEGImages/',
+  segment: {
+    id: 'yolov8-seg',
+    name: 'YOLOv8 Segment',
+    desc: 'YOLO instance-сегментация (class x1 y1 … xn yn)',
+    ext: '.txt',
+    structure: 'images/train/, images/val/, labels/train/, labels/val/',
   },
-];
+};
 
-export default function ExportPanel({ projectId, onClose }) {
+const COCO_FORMAT = {
+  id: 'coco',
+  name: 'COCO',
+  desc: 'COCO JSON (bbox + segmentation)',
+  ext: '.json',
+  structure: 'annotations/instances_train.json, annotations/instances_val.json',
+};
+
+const VOC_FORMAT = {
+  id: 'pascal-voc',
+  name: 'Pascal VOC',
+  desc: 'Pascal VOC XML (ротация как robndbox)',
+  ext: '.xml',
+  structure: 'Annotations/, ImageSets/Main/, JPEGImages/',
+};
+
+function formatsForTask(taskType) {
+  const yolo = YOLO_FORMAT[taskType] || YOLO_FORMAT.obb;
+  // COCO/VOC label geometry is OBB-derived; offer them for box-based tasks only.
+  if (taskType === 'segment') return [yolo];
+  return [yolo, COCO_FORMAT, VOC_FORMAT];
+}
+
+export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
   const { addToast } = useApp();
-  const [format, setFormat] = useState('yolov8-obb');
+  const EXPORT_FORMATS = formatsForTask(taskType);
+  const [format, setFormat] = useState(EXPORT_FORMATS[0].id);
   const [trainSplit, setTrainSplit] = useState(70);
   const [valSplit, setValSplit] = useState(20);
   const [testSplit, setTestSplit] = useState(10);
@@ -223,7 +247,8 @@ export default function ExportPanel({ projectId, onClose }) {
           )}
         </div>
 
-        {/* Augmentation */}
+        {/* Augmentation — not supported for segmentation polygons. */}
+        {taskType !== 'segment' && (
         <div className="mb-4">
           <label className="flex items-center gap-2 text-sm text-slate-400 mb-2 font-medium">
             <input
@@ -247,6 +272,7 @@ export default function ExportPanel({ projectId, onClose }) {
             </div>
           )}
         </div>
+        )}
 
         {/* Output Name */}
         <div className="mb-4">

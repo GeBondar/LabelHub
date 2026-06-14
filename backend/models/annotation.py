@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 
 from backend.database import Base
@@ -39,6 +39,11 @@ class OrientedBBox(Base):
     # move/rotate/resize the box itself — it only re-points the arrow and decides
     # which box edge is "front" in the YOLO-OBB corner order.
     heading = Column(Float, nullable=True)
+    # Normalized instance-segmentation polygon as a JSON list [[x, y], ...] in
+    # [0,1] image coords. Populated only for "segment" projects; NULL for
+    # detect/obb. cx/cy/width/height still hold the polygon's bounding rect (used
+    # for the label position, list display and SAM seeding).
+    points_json = Column(Text, nullable=True)
     is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

@@ -54,6 +54,17 @@ def _draw_obb(frame, cx, cy, w, h, angle_deg, label, conf, color):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
 
+def _draw_mask(frame, polygon_xy, color):
+    """Overlay a translucent filled instance mask + outline from a polygon."""
+    if polygon_xy is None or len(polygon_xy) < 3:
+        return
+    pts = np.asarray(polygon_xy, dtype=np.int32).reshape(-1, 1, 2)
+    overlay = frame.copy()
+    cv2.fillPoly(overlay, [pts], color)
+    cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
+    cv2.polylines(frame, [pts], isClosed=True, color=color, thickness=2)
+
+
 def _draw_box(frame, x1, y1, x2, y2, label, conf, color):
     cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
     text = f"{label} {conf:.2f}"
@@ -232,10 +243,18 @@ class InferenceSession:
                         _draw_obb(frame, cx, cy, w, h, math.degrees(ang), label, c, _class_color(cls_id))
                         det += 1
                 elif getattr(results, "boxes", None) is not None and len(results.boxes) > 0:
+                    # Segment models expose per-instance polygons in results.masks
+                    # alongside boxes; draw the mask then the box+label on top.
+                    masks_xy = None
+                    masks = getattr(results, "masks", None)
+                    if masks is not None and getattr(masks, "xy", None) is not None:
+                        masks_xy = masks.xy
                     for i in range(len(results.boxes.cls)):
                         cls_id = int(results.boxes.cls[i])
                         c = float(results.boxes.conf[i])
                         label = model.names.get(cls_id, f"cls_{cls_id}") if isinstance(model.names, dict) else str(cls_id)
+                        if masks_xy is not None and i < len(masks_xy):
+                            _draw_mask(frame, masks_xy[i], _class_color(cls_id))
                         x1, y1, x2, y2 = results.boxes.xyxy[i].cpu().numpy()
                         _draw_box(frame, x1, y1, x2, y2, label, c, _class_color(cls_id))
                         det += 1

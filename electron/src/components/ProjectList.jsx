@@ -16,9 +16,30 @@ import { useApp } from '../App';
 import apiClient from '../api/client';
 import ImportPanel from './ImportPanel';
 
+const TASK_TYPE_LABEL = { obb: 'OBB', detect: 'Detect', segment: 'Segment' };
+
+const TASK_TYPES = [
+  {
+    id: 'obb',
+    name: 'OBB (ориентированные боксы)',
+    desc: 'Повёрнутые прямоугольники со стрелкой направления (YOLO-OBB)',
+  },
+  {
+    id: 'detect',
+    name: 'Детекция (обычные боксы)',
+    desc: 'Прямоугольники без поворота (YOLO detect)',
+  },
+  {
+    id: 'segment',
+    name: 'Сегментация (полигоны)',
+    desc: 'Instance-сегментация полигонами + SAM2 (YOLO-seg)',
+  },
+];
+
 function CreateProjectModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [taskType, setTaskType] = useState('obb');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,7 +52,11 @@ function CreateProjectModal({ onClose, onCreated }) {
     setLoading(true);
     setError('');
     try {
-      await apiClient.createProject({ name: name.trim(), description: description.trim() });
+      await apiClient.createProject({
+        name: name.trim(),
+        description: description.trim(),
+        task_type: taskType,
+      });
       onCreated();
       onClose();
     } catch (err) {
@@ -66,6 +91,37 @@ function CreateProjectModal({ onClose, onCreated }) {
               placeholder="Описание проекта..."
               maxLength={2000}
             />
+          </div>
+          <div className="mb-4">
+            <label className="block text-sm text-slate-400 mb-2">Тип нейросети *</label>
+            <div className="space-y-2">
+              {TASK_TYPES.map((t) => (
+                <label
+                  key={t.id}
+                  className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                    taskType === t.id
+                      ? 'border-blue-500 bg-blue-900/20'
+                      : 'border-slate-600 bg-slate-700/30 hover:border-slate-500'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="task_type"
+                    value={t.id}
+                    checked={taskType === t.id}
+                    onChange={() => setTaskType(t.id)}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-slate-200">{t.name}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Тип фиксируется при создании и определяет инструменты разметки, экспорт и обучение.
+            </p>
           </div>
           {error && (
             <div className="mb-4 flex items-center gap-2 text-red-400 text-sm">
@@ -187,6 +243,11 @@ function ProjectCard({ project, onDelete, onSelect }) {
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-semibold text-slate-200 truncate flex-1">{project.name}</h3>
+          {project.task_type && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 border border-slate-600 flex-shrink-0 uppercase">
+              {TASK_TYPE_LABEL[project.task_type] || project.task_type}
+            </span>
+          )}
           <button
             className="p-1 rounded hover:bg-red-900/40 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
             onClick={(e) => { e.stopPropagation(); onDelete(project); }}

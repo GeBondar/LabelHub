@@ -109,6 +109,7 @@ class SAM2Service:
             "width": obb["width"],
             "height": obb["height"],
             "angle": obb["angle"],
+            "points": self._mask_to_polygon(mask, orig_w, orig_h),
             "score": score,
         }
 
@@ -157,8 +158,38 @@ class SAM2Service:
             "width": obb["width"],
             "height": obb["height"],
             "angle": obb["angle"],
+            "points": self._mask_to_polygon(mask, orig_w, orig_h),
             "score": score,
         }
+
+    def _mask_to_polygon(self, mask: np.ndarray, img_width: int, img_height: int) -> list:
+        """Largest mask contour as a simplified, normalized polygon [[x, y], ...].
+
+        Used to seed segment-project annotations from a SAM2 mask. Returns [] if
+        no usable contour is found.
+        """
+        mask_uint8 = (mask * 255).astype(np.uint8)
+        contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return []
+
+        contour = max(contours, key=cv2.contourArea)
+        # Simplify to keep the polygon light (~1% of perimeter tolerance).
+        eps = 0.01 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, eps, True)
+        if len(approx) < 3:
+            approx = contour
+        if len(approx) < 3:
+            return []
+
+        pts = approx.reshape(-1, 2)
+        return [
+            [
+                min(1.0, max(0.0, float(x) / img_width)) if img_width > 0 else 0.0,
+                min(1.0, max(0.0, float(y) / img_height)) if img_height > 0 else 0.0,
+            ]
+            for x, y in pts
+        ]
 
     def _mask_to_obb(self, mask: np.ndarray, img_width: int, img_height: int) -> dict:
         mask_uint8 = (mask * 255).astype(np.uint8)

@@ -13,10 +13,33 @@ from backend.config import config
 from backend.models.annotation import Frame, OrientedBBox
 from backend.models.project import Project, ClassLabel, VideoFile
 from backend.services.websocket_manager import ws_manager
-from backend.services.geometry import yolo_obb_line, obb_corners_px
+from backend.services.geometry import (
+    yolo_obb_line, obb_corners_px, yolo_detect_line, yolo_segment_line,
+)
 
 
 class ExportService:
+    async def export_yolo(
+        self,
+        project_id: int,
+        output_dir: str,
+        classes: list,
+        splits: dict,
+        task_type: str,
+    ):
+        """Dispatch to the right Ultralytics YOLO exporter for `task_type`.
+
+        All three layouts share the same directory structure (images/<split>,
+        labels/<split>) and data.yaml; only the label line format differs.
+        """
+        if task_type == "detect":
+            line_builder = self._detect_line
+        elif task_type == "segment":
+            line_builder = self._segment_line
+        else:
+            line_builder = self._obb_line
+        self._write_yolo_dataset(output_dir, classes, splits, line_builder)
+
     async def export_yolov8_obb(
         self,
         project_id: int,
@@ -24,10 +47,45 @@ class ExportService:
         classes: list,
         splits: dict,
     ):
-        """Write an Ultralytics YOLOv8-OBB dataset.
+        """Back-compat wrapper: write an Ultralytics YOLOv8-OBB dataset."""
+        self._write_yolo_dataset(output_dir, classes, splits, self._obb_line)
 
-        Label format is the standard 8-point polygon:
-            class_idx x1 y1 x2 y2 x3 y3 x4 y4   (normalized, clockwise)
+    # --- per-task label-line builders: (annotation, frame, class_idx) -> str ---
+    @staticmethod
+    def _obb_line(a, frame, cls_idx) -> str:
+        return yolo_obb_line(
+            cls_idx, a.cx, a.cy, a.width, a.height, a.angle,
+            frame.width, frame.height,
+            heading=a.heading if a.heading is not None else a.angle,
+        )
+
+    @staticmethod
+    def _detect_line(a, frame, cls_idx) -> str:
+        return yolo_detect_line(cls_idx, a.cx, a.cy, a.width, a.height)
+
+    @staticmethod
+    def _segment_line(a, frame, cls_idx) -> str:
+        points = None
+        if getattr(a, "points_json", None):
+            try:
+                points = json.loads(a.points_json)
+            except (ValueError, TypeError):
+                points = None
+        if not points or len(points) < 3:
+            # Fallback: a rectangular polygon from the bounding box corners.
+            hw, hh = a.width / 2.0, a.height / 2.0
+            points = [
+                [a.cx - hw, a.cy - hh],
+                [a.cx + hw, a.cy - hh],
+                [a.cx + hw, a.cy + hh],
+                [a.cx - hw, a.cy + hh],
+            ]
+        return yolo_segment_line(cls_idx, points)
+
+    def _write_yolo_dataset(self, output_dir: str, classes: list, splits: dict, line_builder):
+        """Write a YOLO dataset (images/<split>, labels/<split>, data.yaml).
+
+        `line_builder(annotation, frame, class_idx)` formats one label line.
         `splits` is the result of split_data() so train/val/test are stable.
         """
         class_map = {c.id: c.index for c in classes}
@@ -53,13 +111,7 @@ class ExportService:
                 label_lines = []
                 for a in frame_annos:
                     cls_idx = class_map.get(a.class_id, 0)
-                    label_lines.append(
-                        yolo_obb_line(
-                            cls_idx, a.cx, a.cy, a.width, a.height, a.angle,
-                            frame.width, frame.height,
-                            heading=a.heading if a.heading is not None else a.angle,
-                        )
-                    )
+                    label_lines.append(line_builder(a, frame, cls_idx))
 
                 lbl_path = os.path.join(lbl_dir, f"{base_name}.txt")
                 with open(lbl_path, "w") as f:

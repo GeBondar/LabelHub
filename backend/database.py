@@ -21,6 +21,15 @@ async def _migrate(conn):
     columns = {row[1] for row in result.fetchall()}
     if "heading" not in columns:
         await conn.execute(text("ALTER TABLE oriented_bboxes ADD COLUMN heading FLOAT"))
+    if "points_json" not in columns:
+        await conn.execute(text("ALTER TABLE oriented_bboxes ADD COLUMN points_json TEXT"))
+
+    result = await conn.execute(text("PRAGMA table_info(projects)"))
+    project_columns = {row[1] for row in result.fetchall()}
+    if "task_type" not in project_columns:
+        await conn.execute(
+            text("ALTER TABLE projects ADD COLUMN task_type VARCHAR(16) DEFAULT 'obb'")
+        )
 
 
 async def init_db():

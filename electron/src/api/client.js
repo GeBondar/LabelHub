@@ -209,7 +209,8 @@ const apiClient = {
     api.post(`/export/import/${projectId}/dir`, data),
 
   // Training
-  getBaseModels: () => api.get('/training/models'),
+  getBaseModels: (taskType) =>
+    api.get('/training/models', { params: taskType ? { task_type: taskType } : {} }),
   getDeviceInfo: () => api.get('/training/device-info'),
   startTraining: (projectId, data) => api.post(`/training/${projectId}/start`, data),
   getTrainingRuns: (projectId) => api.get(`/training/${projectId}/runs`),

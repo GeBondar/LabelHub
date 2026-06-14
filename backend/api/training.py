@@ -16,13 +16,40 @@ from backend.services.training_service import training_service
 router = APIRouter(prefix="/api/training", tags=["training"])
 
 
-BASE_MODELS = [
-    "yolov8n-obb.pt",
-    "yolov8s-obb.pt",
-    "yolov8m-obb.pt",
-    "yolov8l-obb.pt",
-    "yolov8x-obb.pt",
-]
+# Suffix Ultralytics appends to a model name for each task ("" = plain detect).
+_TASK_SUFFIX = {"detect": "", "segment": "-seg", "obb": "-obb"}
+_MODEL_SIZES = ["n", "s", "m", "l", "x"]
+
+
+def base_models_for(task_type: str) -> list[str]:
+    """Suggested base checkpoints (YOLOv8 + YOLO11) for a task type."""
+    suffix = _TASK_SUFFIX.get(task_type, "-obb")
+    models = []
+    for family in ("yolov8", "yolo11"):
+        for size in _MODEL_SIZES:
+            models.append(f"{family}{size}{suffix}.pt")
+    return models
+
+
+def _model_matches_task(base_model: str, task_type: str) -> bool:
+    """True if `base_model`'s name carries the right task suffix.
+
+    Only enforced for our known suffix conventions; arbitrary user-supplied
+    .pt paths are allowed through (validated separately by existence).
+    """
+    name = os.path.basename(base_model).lower()
+    if name.endswith("-obb.pt"):
+        return task_type == "obb"
+    if name.endswith("-seg.pt"):
+        return task_type == "segment"
+    if name.endswith("-cls.pt") or name.endswith("-pose.pt"):
+        return False
+    # No special suffix -> plain detection model.
+    return task_type == "detect"
+
+
+# Back-compat default list (OBB) for callers that don't pass a task type.
+BASE_MODELS = base_models_for("obb")
 
 
 class TrainStartRequest(BaseModel):
@@ -80,8 +107,10 @@ def _to_out(run: TrainingRun) -> TrainRunOut:
 
 
 @router.get("/models")
-async def list_base_models():
-    return {"models": BASE_MODELS}
+async def list_base_models(task_type: str = "obb"):
+    if task_type not in _TASK_SUFFIX:
+        task_type = "obb"
+    return {"models": base_models_for(task_type), "task_type": task_type}
 
 
 @router.get("/device-info")
@@ -113,8 +142,23 @@ async def start_training(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if data.base_model not in BASE_MODELS and not os.path.exists(data.base_model):
+    task_type = (project.task_type or "obb")
+    valid_models = base_models_for(task_type)
+    is_known = data.base_model in valid_models
+    is_custom_path = os.path.exists(data.base_model)
+    if not is_known and not is_custom_path:
         raise HTTPException(status_code=400, detail=f"Unknown base model: {data.base_model}")
+
+    # A known checkpoint must match the project's task; custom .pt paths are
+    # trusted (the user may have a specially-named checkpoint).
+    if is_known and not _model_matches_task(data.base_model, task_type):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Модель {data.base_model} не подходит для задачи '{task_type}'. "
+                f"Выберите модель из списка для этого типа проекта."
+            ),
+        )
 
     # Build the dataset on disk first so config errors surface immediately.
     try:

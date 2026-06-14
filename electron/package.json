@@ -12,6 +12,19 @@
     "build:web": "vite build",
     "build": "vite build && electron-builder"
   },
+  "build": {
+    "appId": "com.labelhub.app",
+    "productName": "LabelHub",
+    "win": {
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
+    }
+  },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
