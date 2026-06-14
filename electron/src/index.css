@@ -1,0 +1,228 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: #1e293b;
+  --color-bg-tertiary: #334155;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-accent-light: #60a5fa;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-border: #475569;
+  --color-border-light: #334155;
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-bg-tertiary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border);
+}
+
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #0a0f1a;
+  cursor: crosshair;
+}
+
+.canvas-container.panning {
+  cursor: grab;
+}
+
+.canvas-container.panning:active {
+  cursor: grabbing;
+}
+
+.canvas-container.selecting {
+  cursor: default;
+}
+
+.toast-enter {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
+.toast-exit {
+  animation: slideOutRight 0.3s ease-in forwards;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+.progress-bar {
+  transition: width 0.3s ease;
+}
+
+.resizable-handle {
+  position: absolute;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+
+.resizable-handle:hover,
+.resizable-handle.active {
+  background: var(--color-accent);
+}
+
+.glass-panel {
+  background: rgba(30, 41, 59, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border-light);
+}
+
+.tool-btn {
+  @apply px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150;
+  @apply hover:bg-slate-700 active:scale-95;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent;
+}
+
+.tool-btn.active {
+  @apply bg-blue-600 text-white;
+}
+
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium;
+  @apply transition-all duration-150 active:scale-95;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-medium;
+  @apply transition-all duration-150 active:scale-95;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-danger {
+  @apply px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium;
+  @apply transition-all duration-150 active:scale-95;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.input-field {
+  @apply w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100;
+  @apply focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+  @apply placeholder:text-slate-500 transition-all duration-150;
+}
+
+.card {
+  @apply bg-slate-800 border border-slate-700 rounded-xl p-4;
+  @apply hover:border-slate-600 transition-all duration-200;
+}
+
+.frame-thumb {
+  @apply relative cursor-pointer rounded-lg overflow-hidden border-2 border-transparent;
+  @apply hover:border-blue-500 transition-all duration-150;
+}
+
+.frame-thumb.active {
+  @apply border-blue-500 ring-2 ring-blue-500/30;
+}
+
+.frame-thumb.labeled {
+  @apply border-green-500/70;
+}
+
+.frame-thumb.labeled.active {
+  @apply border-blue-500 ring-2 ring-blue-500/30;
+}
+
+.class-swatch {
+  @apply w-4 h-4 rounded-sm border border-slate-600 flex-shrink-0;
+}
+
+.toast-container {
+  @apply fixed top-4 right-4 z-50 flex flex-col gap-2;
+}
+
+.toast {
+  @apply px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-fade-in;
+  @apply flex items-center gap-2 min-w-[280px] max-w-[420px];
+}
+
+.toast-success {
+  @apply bg-green-900/90 text-green-200 border border-green-700;
+}
+
+.toast-error {
+  @apply bg-red-900/90 text-red-200 border border-red-700;
+}
+
+.toast-warning {
+  @apply bg-yellow-900/90 text-yellow-200 border border-yellow-700;
+}
+
+.toast-info {
+  @apply bg-blue-900/90 text-blue-200 border border-blue-700;
+}

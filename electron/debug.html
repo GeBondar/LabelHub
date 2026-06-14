@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>LabelHub - Debug</title>
+  <style>
+    body { background:#0f172a; color:#e2e8f0; font-family:monospace; padding:20px; margin:0; }
+    #log { white-space:pre-wrap; font-size:13px; line-height:1.5; }
+    .err { color:#f87171; }
+    .ok { color:#4ade80; }
+    .info { color:#60a5fa; }
+    h2 { color:#94a3b8; font-size:14px; margin:16px 0 4px; }
+  </style>
+</head>
+<body>
+  <h1 style="color:#3b82f6">Diagnostics</h1>
+  <div id="log"></div>
+
+  <script type="module">
+    const log = document.getElementById('log');
+    function add(msg, cls='info') {
+      log.innerHTML += `<div class="${cls}">${msg}</div>`;
+    }
+
+    window.onerror = (msg, src, line, col, err) => {
+      add(`RUNTIME ERROR: ${msg} at ${src}:${line}:${col}`, 'err');
+      if (err?.stack) add(err.stack, 'err');
+    };
+    window.addEventListener('unhandledrejection', e => {
+      add(`UNHANDLED PROMISE: ${e.reason?.message || e.reason}`, 'err');
+      if (e.reason?.stack) add(e.reason.stack, 'err');
+    });
+
+    add('Starting diagnostics...', 'ok');
+
+    // Test 1: Backend health
+    try {
+      const r = await fetch('http://localhost:8787/api/health');
+      const d = await r.json();
+      add(`Backend: ${d.status}`, 'ok');
+    } catch(e) {
+      add(`Backend: FAIL - ${e.message}`, 'err');
+    }
+
+    // Test 2: Projects API
+    try {
+      const r = await fetch('http://localhost:8787/api/projects/');
+      const d = await r.json();
+      add(`Projects: ${d.length} found`, 'ok');
+    } catch(e) {
+      add(`Projects API: FAIL - ${e.message}`, 'err');
+    }
+
+    // Test 3: Frames API
+    try {
+      const r = await fetch('http://localhost:8787/api/videos/3/frames?page_size=1');
+      const d = await r.json();
+      add(`Frames (project 3): ${d.total} total`, 'ok');
+    } catch(e) {
+      add(`Frames API: FAIL - ${e.message}`, 'err');
+    }
+
+    // Test 4: Image serving
+    try {
+      const r = await fetch('http://localhost:8787/static/frames/projects/3/frames/1/frame_000001.jpg');
+      add(`Image: ${r.status} (${r.headers.get('content-type')})`, r.ok ? 'ok' : 'err');
+    } catch(e) {
+      add(`Image: FAIL - ${e.message}`, 'err');
+    }
+
+    // Test 5: Vite React module
+    try {
+      add('Importing React modules...', 'info');
+      const m = await import('/src/main.jsx');
+      add(`main.jsx loaded: default=${typeof m.default}`, 'ok');
+    } catch(e) {
+      add(`main.jsx import FAIL: ${e.message}`, 'err');
+      if (e.stack) add(e.stack, 'err');
+    }
+
+    // Test 6: Full App import
+    try {
+      add('Importing App...', 'info');
+      const m = await import('/src/App.jsx');
+      add(`App loaded: default=${typeof m.default} exports=${Object.keys(m).join(',')}`, 'ok');
+    } catch(e) {
+      add(`App import FAIL: ${e.message}`, 'err');
+      if (e.stack) add(e.stack, 'err');
+    }
+
+    // Test 7: AnnotationCanvas import
+    try {
+      add('Importing AnnotationCanvas...', 'info');
+      const m = await import('/src/components/AnnotationCanvas.jsx');
+      add(`AnnotationCanvas loaded: ${typeof m.default}`, 'ok');
+    } catch(e) {
+      add(`AnnotationCanvas FAIL: ${e.message}`, 'err');
+      if (e.stack) add(e.stack, 'err');
+    }
+
+    // Test 8: ProjectWorkspace import
+    try {
+      add('Importing ProjectWorkspace...', 'info');
+      const m = await import('/src/components/ProjectWorkspace.jsx');
+      add(`ProjectWorkspace loaded: ${typeof m.default}`, 'ok');
+    } catch(e) {
+      add(`ProjectWorkspace FAIL: ${e.message}`, 'err');
+      if (e.stack) add(e.stack, 'err');
+    }
+
+    add('--- Diagnostics complete ---', 'ok');
+  </script>
+</body>
+</html>
