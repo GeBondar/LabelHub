@@ -14,6 +14,7 @@ import {
   Loader2,
   CheckCircle2,
   Navigation,
+  AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../App';
 import apiClient from '../api/client';
@@ -89,6 +90,53 @@ function ensureOBBRect() {
   return OBBRect;
 }
 
+// Axis-aligned bounding box (normalized cx,cy,w,h) that encloses an oriented
+// box. Used so detect projects always show/train upright boxes even if an
+// annotation carries an angle (e.g. SAM2 returns a rotated minAreaRect).
+// Rotation is computed in pixel space because images aren't square.
+function obbToAabbNorm(cx, cy, w, h, angleDeg, imgW, imgH) {
+  if (!imgW || !imgH) return { cx, cy, width: w, height: h };
+  const a = (angleDeg * Math.PI) / 180;
+  const cosA = Math.cos(a), sinA = Math.sin(a);
+  const hw = (w * imgW) / 2, hh = (h * imgH) / 2;
+  const cxPx = cx * imgW, cyPx = cy * imgH;
+  const xs = [], ys = [];
+  for (const [dx, dy] of [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]) {
+    xs.push(cxPx + dx * cosA - dy * sinA);
+    ys.push(cyPx + dx * sinA + dy * cosA);
+  }
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return {
+    cx: ((x0 + x1) / 2) / imgW,
+    cy: ((y0 + y1) / 2) / imgH,
+    width: (x1 - x0) / imgW,
+    height: (y1 - y0) / imgH,
+  };
+}
+
+// SAM2 load-state badge for the canvas toolbar. `status` is the /sam2/status
+// payload: { state: idle|loading|loaded|error, error }.
+function renderSamBadge(status) {
+  const state = status?.state || 'unknown';
+  const cfg = {
+    loading: { Icon: Loader2, cls: 'text-amber-300 bg-amber-900/20 border-amber-700/40', text: 'SAM2 загружается…', spin: true },
+    loaded: { Icon: CheckCircle2, cls: 'text-green-300 bg-green-900/20 border-green-700/40', text: 'SAM2 готов' },
+    error: { Icon: AlertCircle, cls: 'text-red-300 bg-red-900/20 border-red-700/40', text: 'SAM2 недоступен' },
+  }[state] || { Icon: Loader2, cls: 'text-slate-400 bg-slate-700/40 border-slate-600/40', text: 'SAM2…', spin: true };
+  const { Icon, cls, text, spin } = cfg;
+  const title = state === 'error' && status?.error ? status.error : text;
+  return (
+    <span
+      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${cls}`}
+      title={title}
+    >
+      <Icon size={12} className={spin ? 'loading-spinner' : ''} />
+      <span className="hidden lg:inline">{text}</span>
+    </span>
+  );
+}
+
 export default function AnnotationCanvas({
   projectId,
   taskType = 'obb',
@@ -116,6 +164,7 @@ export default function AnnotationCanvas({
   const [isPanning, setIsPanning] = useState(false);
   const [samMode, setSamMode] = useState(null);
   const [samLoading, setSamLoading] = useState(false);
+  const [samStatus, setSamStatus] = useState({ state: 'unknown', error: null });
   const [selectedObj, setSelectedObj] = useState(null);
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
@@ -207,6 +256,28 @@ export default function AnnotationCanvas({
   useEffect(() => {
     modeRef.current = canvasMode;
   }, [canvasMode]);
+
+  // Poll the SAM2 load state for the status badge. The backend warms it up in
+  // the background at startup; we poll fast while it's still loading and slow
+  // once it settles (loaded/error).
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+    async function poll() {
+      try {
+        const res = await apiClient.samStatus();
+        if (cancelled) return;
+        const data = res.data || { state: 'unknown' };
+        setSamStatus(data);
+        const settled = data.state === 'loaded' || data.state === 'error';
+        timer = setTimeout(poll, settled ? 8000 : 1500);
+      } catch {
+        if (!cancelled) timer = setTimeout(poll, 4000);
+      }
+    }
+    poll();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || !frame) return;
@@ -320,7 +391,18 @@ export default function AnnotationCanvas({
         canvasElRef.current.parentNode.removeChild(canvasElRef.current);
         canvasElRef.current = null;
       }
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      // Auto-save: flush any pending (debounced) edit before leaving this frame,
+      // so a move/resize is never lost when switching photos quickly.
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (pendingSaveRef.current) {
+        const { id, data } = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        apiClient.updateAnnotation(id, data).catch((e) =>
+          console.error('Auto-save on navigate failed:', e));
+      }
     };
   }, [frame?.id]);
 
@@ -444,10 +526,20 @@ export default function AnnotationCanvas({
     const color = cls?.color || '#3b82f6';
     const label = cls?.name || `Класс ${ann.class_id}`;
 
-    const { x, y } = canvasFromNormalized(ann.cx, ann.cy);
-    const { w, h } = canvasSizeFromNormalized(ann.width, ann.height);
+    const rawAngle = ann.angle || 0;
+    // Detect boxes are axis-aligned: if a stored annotation carries an angle
+    // (e.g. created via SAM2, which returns a rotated minAreaRect), render its
+    // upright bounding box instead — that's exactly what detect trains on.
+    let gCx = ann.cx, gCy = ann.cy, gW = ann.width, gH = ann.height;
+    let annAngle = rawAngle;
+    if (isDetect && rawAngle && frame) {
+      const bb = obbToAabbNorm(ann.cx, ann.cy, ann.width, ann.height, rawAngle, frame.width, frame.height);
+      gCx = bb.cx; gCy = bb.cy; gW = bb.width; gH = bb.height; annAngle = 0;
+    }
 
-    const annAngle = ann.angle || 0;
+    const { x, y } = canvasFromNormalized(gCx, gCy);
+    const { w, h } = canvasSizeFromNormalized(gW, gH);
+
     const annHeading = (ann.heading === undefined || ann.heading === null) ? annAngle : ann.heading;
 
     // Detect = axis-aligned box (no rotation/heading); OBB = rotatable arrow box.
@@ -479,10 +571,10 @@ export default function AnnotationCanvas({
       annotationData: {
         id: ann.id,
         class_id: ann.class_id,
-        cx: ann.cx,
-        cy: ann.cy,
-        width: ann.width,
-        height: ann.height,
+        cx: gCx,
+        cy: gCy,
+        width: gW,
+        height: gH,
         angle: annAngle,
         heading: annHeading,
         is_verified: ann.is_verified,
@@ -1034,6 +1126,29 @@ export default function AnnotationCanvas({
     }
   }
 
+  // Build the create payload from a SAM2 response per task type. Segment stores
+  // the polygon; detect stores an axis-aligned bbox (SAM returns a rotated
+  // minAreaRect, which is wrong for detect); OBB keeps the oriented box.
+  function samPayload(obb) {
+    if (isSegment && obb.points && obb.points.length >= 3) {
+      return { class_id: selectedClassId, cx: 0, cy: 0, width: 0.0001, height: 0.0001, angle: 0, points: obb.points };
+    }
+    if (isDetect) {
+      let bb;
+      if (obb.points && obb.points.length >= 3) {
+        const xs = obb.points.map((p) => p[0]);
+        const ys = obb.points.map((p) => p[1]);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs);
+        const y0 = Math.min(...ys), y1 = Math.max(...ys);
+        bb = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, width: x1 - x0, height: y1 - y0 };
+      } else {
+        bb = obbToAabbNorm(obb.cx, obb.cy, obb.width, obb.height, obb.angle || 0, frame.width, frame.height);
+      }
+      return { class_id: selectedClassId, cx: bb.cx, cy: bb.cy, width: bb.width, height: bb.height, angle: 0 };
+    }
+    return { class_id: selectedClassId, cx: obb.cx, cy: obb.cy, width: obb.width, height: obb.height, angle: obb.angle };
+  }
+
   async function handleSAMClick(opt, canvas) {
     if (!frame) return;
     if (!selectedClassId) {
@@ -1053,10 +1168,7 @@ export default function AnnotationCanvas({
       const res = await apiClient.samPoint(frame.id, pxX, pxY);
       const obb = res.data;
 
-      // Segment projects store the SAM polygon; box-based projects store the OBB.
-      const payload = (isSegment && obb.points && obb.points.length >= 3)
-        ? { class_id: selectedClassId, cx: 0, cy: 0, width: 0.0001, height: 0.0001, angle: 0, points: obb.points }
-        : { class_id: selectedClassId, cx: obb.cx, cy: obb.cy, width: obb.width, height: obb.height, angle: obb.angle };
+      const payload = samPayload(obb);
       const createRes = await apiClient.createAnnotation(frame.id, payload);
 
       const newAnn = createRes.data;
@@ -1096,9 +1208,7 @@ export default function AnnotationCanvas({
       const res = await apiClient.samBox(frame.id, x1, y1, x2, y2);
       const obb = res.data;
 
-      const payload = (isSegment && obb.points && obb.points.length >= 3)
-        ? { class_id: selectedClassId, cx: 0, cy: 0, width: 0.0001, height: 0.0001, angle: 0, points: obb.points }
-        : { class_id: selectedClassId, cx: obb.cx, cy: obb.cy, width: obb.width, height: obb.height, angle: obb.angle };
+      const payload = samPayload(obb);
       const createRes = await apiClient.createAnnotation(frame.id, payload);
 
       const newAnn = createRes.data;
@@ -1375,6 +1485,10 @@ export default function AnnotationCanvas({
             Отмена SAM
           </button>
         )}
+
+        {/* SAM2 load-state badge — shows whether the model is still warming up
+            in the background, ready, or unavailable. */}
+        {renderSamBadge(samStatus)}
 
         {isObb && <div className="h-5 w-px bg-slate-700 mx-1" />}
 

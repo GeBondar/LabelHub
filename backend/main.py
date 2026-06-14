@@ -36,8 +36,15 @@ class CORSStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
     config.ensure_dirs()
     await init_db()
+    # Warm up SAM2 (torch + model weights) on a background thread so it's ready
+    # by the time the user reaches for it, without delaying server startup or
+    # blocking the event loop. Failures are captured in the service's load_state
+    # and surfaced to the UI badge — they never break startup.
+    from backend.services.sam2_service import sam2_service
+    asyncio.create_task(asyncio.to_thread(sam2_service.warmup))
     yield
 
 

@@ -1,4 +1,5 @@
 import os
+import threading
 import numpy as np
 import cv2
 from PIL import Image
@@ -23,44 +24,87 @@ class SAM2Service:
             return
         self._initialized = True
         self.predictor = None
-        self.device = "cuda" if __import__("torch").cuda.is_available() else "cpu"
+        # Resolved lazily on first load so importing this module never pulls in
+        # torch (which would block backend startup by 20-40s on a cold start).
+        self.device = None
+        # Load lifecycle, surfaced to the UI: idle | loading | loaded | error.
+        self.load_state = "idle"
+        self.load_error = None
+        self._load_lock = threading.Lock()
+
+    def status(self) -> dict:
+        """Current load state for the SAM2 status badge."""
+        return {
+            "state": self.load_state,
+            "loaded": self.load_state == "loaded",
+            "device": self.device or "unknown",
+            "error": self.load_error,
+        }
+
+    def warmup(self):
+        """Load the model (torch + weights) eagerly. Never raises — failures are
+        captured in `load_state`/`load_error`. Meant to run on a background
+        thread at startup so the model is ready by the time the user needs it."""
+        try:
+            self._ensure_model()
+        except Exception:
+            pass
 
     def _ensure_model(self):
         if self.predictor is not None:
             return True
-        try:
-            import sam2 as _sam2_pkg
-            from hydra.core.global_hydra import GlobalHydra
-            from hydra import initialize_config_dir
-            from sam2.build_sam import build_sam2
-            from sam2.sam2_image_predictor import SAM2ImagePredictor
-            import torch
+        # Serialize loads so a background warmup and a user click can't both
+        # build the model; the second caller just waits and reuses it.
+        with self._load_lock:
+            if self.predictor is not None:
+                return True
+            self.load_state = "loading"
+            self.load_error = None
+            try:
+                import sam2 as _sam2_pkg
+                from hydra.core.global_hydra import GlobalHydra
+                from hydra import initialize_config_dir
+                from sam2.build_sam import build_sam2
+                from sam2.sam2_image_predictor import SAM2ImagePredictor
+                import torch
 
-            checkpoint = config.SAM2_CHECKPOINT
-            if not os.path.exists(checkpoint):
-                raise FileNotFoundError(
-                    f"SAM2 checkpoint not found at {checkpoint}. "
-                    "Please download it from https://github.com/facebookresearch/sam2"
-                )
+                if self.device is None:
+                    self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-            GlobalHydra.instance().clear()
-            sam2_config_dir = os.path.join(os.path.dirname(_sam2_pkg.__file__), "configs", "sam2")
-            with initialize_config_dir(version_base=None, config_dir=sam2_config_dir):
-                sam2_model = build_sam2(config.SAM2_MODEL_CFG, device=self.device)
+                checkpoint = config.SAM2_CHECKPOINT
+                if not os.path.exists(checkpoint):
+                    raise FileNotFoundError(
+                        f"SAM2 checkpoint not found at {checkpoint}. "
+                        "Please download it from https://github.com/facebookresearch/sam2"
+                    )
 
-            sd = torch.load(checkpoint, map_location="cpu", weights_only=False)
-            if isinstance(sd, dict) and "model" in sd:
-                sd = sd["model"]
-            sam2_model.load_state_dict(sd, strict=False)
-            sam2_model.to(self.device)
-            sam2_model.eval()
+                GlobalHydra.instance().clear()
+                sam2_config_dir = os.path.join(os.path.dirname(_sam2_pkg.__file__), "configs", "sam2")
+                with initialize_config_dir(version_base=None, config_dir=sam2_config_dir):
+                    sam2_model = build_sam2(config.SAM2_MODEL_CFG, device=self.device)
 
-            self.predictor = SAM2ImagePredictor(sam2_model)
-            return True
-        except ImportError as e:
-            raise RuntimeError(f"SAM2 not available: {e}")
-        except FileNotFoundError as e:
-            raise RuntimeError(str(e))
+                sd = torch.load(checkpoint, map_location="cpu", weights_only=False)
+                if isinstance(sd, dict) and "model" in sd:
+                    sd = sd["model"]
+                sam2_model.load_state_dict(sd, strict=False)
+                sam2_model.to(self.device)
+                sam2_model.eval()
+
+                self.predictor = SAM2ImagePredictor(sam2_model)
+                self.load_state = "loaded"
+                return True
+            except ImportError as e:
+                self.load_state = "error"
+                self.load_error = f"SAM2 не установлен: {e}"
+                raise RuntimeError(self.load_error)
+            except FileNotFoundError as e:
+                self.load_state = "error"
+                self.load_error = str(e)
+                raise RuntimeError(self.load_error)
+            except Exception as e:
+                self.load_state = "error"
+                self.load_error = str(e)
+                raise
 
     async def predict_from_click(self, image_path: str, x: float, y: float) -> dict:
         self._ensure_model()
@@ -226,6 +270,8 @@ class SAM2Service:
         if self.predictor is not None:
             del self.predictor
             self.predictor = None
+            self.load_state = "idle"
+            self.load_error = None
             import torch
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

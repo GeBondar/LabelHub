@@ -3,7 +3,8 @@ import random
 import numpy as np
 import cv2
 from PIL import Image
-import albumentations as A
+# NOTE: albumentations is imported lazily (see _get_pipeline) because it pulls
+# in torch, which would otherwise block backend startup on import.
 
 from backend.config import config
 from backend.services.geometry import obb_corners_px, polygon_to_obb, normalize_angle
@@ -20,16 +21,24 @@ class AugmentationService:
     """
 
     def __init__(self):
-        self.transform_pipeline = A.Compose(
-            [
-                A.HorizontalFlip(p=0.5),
-                A.VerticalFlip(p=0.3),
-                A.Rotate(limit=30, p=0.5, border_mode=cv2.BORDER_CONSTANT),
-                A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-                A.GaussNoise(p=0.3),
-            ],
-            keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
-        )
+        # Built lazily on first use to keep albumentations (and torch) out of
+        # the startup import path.
+        self.transform_pipeline = None
+
+    def _get_pipeline(self):
+        if self.transform_pipeline is None:
+            import albumentations as A
+            self.transform_pipeline = A.Compose(
+                [
+                    A.HorizontalFlip(p=0.5),
+                    A.VerticalFlip(p=0.3),
+                    A.Rotate(limit=30, p=0.5, border_mode=cv2.BORDER_CONSTANT),
+                    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+                    A.GaussNoise(p=0.3),
+                ],
+                keypoint_params=A.KeypointParams(format="xy", remove_invisible=False),
+            )
+        return self.transform_pipeline
 
     def apply_augmentations(
         self,
@@ -68,7 +77,7 @@ class AugmentationService:
                 return results
 
             try:
-                transformed = self.transform_pipeline(image=image, keypoints=keypoints)
+                transformed = self._get_pipeline()(image=image, keypoints=keypoints)
             except Exception:
                 continue
 

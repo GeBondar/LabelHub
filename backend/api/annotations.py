@@ -313,16 +313,20 @@ async def update_frame_status(
 @router.get("/sam2/status")
 async def sam2_status():
     try:
-        loaded = sam2_service.predictor is not None
-        return {"loaded": loaded, "device": sam2_service.device}
-    except Exception:
-        return {"loaded": False, "device": "unknown"}
+        return sam2_service.status()
+    except Exception as e:
+        return {"state": "error", "loaded": False, "device": "unknown", "error": str(e)}
 
 
 @router.post("/sam2/load")
 async def sam2_load():
+    import asyncio
+    # Already loaded or loading in the background — just report current state.
+    if sam2_service.load_state in ("loaded", "loading"):
+        return {"status": sam2_service.load_state, **sam2_service.status()}
     try:
-        sam2_service._ensure_model()
-        return {"status": "loaded", "device": sam2_service.device}
+        # Run the heavy load off the event loop so the API stays responsive.
+        await asyncio.to_thread(sam2_service._ensure_model)
+        return {"status": "loaded", **sam2_service.status()}
     except Exception as e:
-        return {"status": "error", "detail": str(e)}
+        return {"status": "error", "detail": str(e), **sam2_service.status()}

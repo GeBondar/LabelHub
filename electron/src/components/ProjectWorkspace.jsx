@@ -129,6 +129,18 @@ export default function ProjectWorkspace() {
     }
   }, [currentFrame?.id]);
 
+  // Auto-save: as soon as a frame has any annotation (drawn, SAM2, polygon), it
+  // is automatically marked "Размечен" — both in the UI and on the backend — so
+  // the user never has to press Save to register a photo into the dataset.
+  useEffect(() => {
+    if (!currentFrame?.id) return;
+    if (currentAnnotations.length > 0 && !currentFrame.is_labeled) {
+      setFrames((prev) => prev.map((f) =>
+        f.id === currentFrame.id ? { ...f, is_labeled: true } : f));
+      apiClient.updateFrameStatus(currentFrame.id, true).catch(() => {});
+    }
+  }, [currentAnnotations.length, currentFrame?.id, currentFrame?.is_labeled]);
+
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
@@ -574,9 +586,13 @@ export default function ProjectWorkspace() {
           Режим: {canvasMode === 'draw' ? 'Рисование' : canvasMode === 'edit' ? 'Редактирование' : 'Удаление'}
         </span>
         <span className="flex-1" />
-        {saving && (
+        {saving ? (
           <span className="flex items-center gap-1 text-blue-400">
             <Loader2 size={12} className="loading-spinner" /> Сохранение...
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-green-500/80" title="Разметка сохраняется автоматически">
+            <CheckCircle size={12} /> Автосохранение
           </span>
         )}
       </div>

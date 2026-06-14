@@ -199,8 +199,8 @@ function ProjectCard({ project, onDelete, onSelect }) {
         const p = res.data;
         setStats({
           total_frames: p.frame_count || 0,
-          labeled_frames: 0,
-          total_annotations: 0,
+          labeled_frames: p.labeled_frame_count || 0,
+          total_annotations: p.annotation_count || 0,
         });
       }
     }).catch(() => {});
@@ -262,11 +262,14 @@ function ProjectCard({ project, onDelete, onSelect }) {
         <div className="flex items-center gap-4 text-xs text-slate-500">
           {stats && (
             <>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1" title="Всего кадров">
                 <ImageIcon size={12} />
                 {stats.total_frames || 0}
               </span>
-              <span className="flex items-center gap-1">
+              <span
+                className="flex items-center gap-1"
+                title="Размечено кадров / всего аннотаций"
+              >
                 <Tag size={12} />
                 {stats.labeled_frames || 0} / {stats.total_annotations || 0}
               </span>

@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 
 from backend.database import get_db
@@ -41,6 +41,8 @@ class ProjectOut(BaseModel):
     class_count: int = 0
     video_count: int = 0
     frame_count: int = 0
+    labeled_frame_count: int = 0
+    annotation_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -85,12 +87,19 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
         )
         class_count = len(classes_result.scalars().all())
 
-        from backend.models.annotation import Frame
+        from backend.models.annotation import Frame, OrientedBBox
         from backend.models.project import VideoFile
         frames_result = await db.execute(
             select(Frame).where(Frame.project_id == p.id)
         )
-        frame_count = len(frames_result.scalars().all())
+        frames = frames_result.scalars().all()
+        frame_count = len(frames)
+        labeled_frame_count = sum(1 for f in frames if f.is_labeled)
+        annotation_count = (await db.execute(
+            select(func.count(OrientedBBox.id))
+            .join(Frame, OrientedBBox.frame_id == Frame.id)
+            .where(Frame.project_id == p.id)
+        )).scalar() or 0
         videos_result = await db.execute(
             select(VideoFile).where(VideoFile.project_id == p.id)
         )
@@ -106,6 +115,8 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             class_count=class_count,
             video_count=video_count,
             frame_count=frame_count,
+            labeled_frame_count=labeled_frame_count,
+            annotation_count=annotation_count,
         ))
     return out
 
@@ -116,12 +127,19 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    from backend.models.annotation import Frame
+    from backend.models.annotation import Frame, OrientedBBox
     from backend.models.project import VideoFile
     classes_result = await db.execute(select(ClassLabel).where(ClassLabel.project_id == project_id))
     class_count = len(classes_result.scalars().all())
     frames_result = await db.execute(select(Frame).where(Frame.project_id == project_id))
-    frame_count = len(frames_result.scalars().all())
+    frames = frames_result.scalars().all()
+    frame_count = len(frames)
+    labeled_frame_count = sum(1 for f in frames if f.is_labeled)
+    annotation_count = (await db.execute(
+        select(func.count(OrientedBBox.id))
+        .join(Frame, OrientedBBox.frame_id == Frame.id)
+        .where(Frame.project_id == project_id)
+    )).scalar() or 0
     videos_result = await db.execute(select(VideoFile).where(VideoFile.project_id == project_id))
     video_count = len(videos_result.scalars().all())
 
@@ -135,6 +153,8 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
         class_count=class_count,
         video_count=video_count,
         frame_count=frame_count,
+        labeled_frame_count=labeled_frame_count,
+        annotation_count=annotation_count,
     )
 
 

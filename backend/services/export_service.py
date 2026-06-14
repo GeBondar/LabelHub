@@ -15,6 +15,7 @@ from backend.models.project import Project, ClassLabel, VideoFile
 from backend.services.websocket_manager import ws_manager
 from backend.services.geometry import (
     yolo_obb_line, obb_corners_px, yolo_detect_line, yolo_segment_line,
+    obb_to_aabb,
 )
 
 
@@ -61,7 +62,13 @@ class ExportService:
 
     @staticmethod
     def _detect_line(a, frame, cls_idx) -> str:
-        return yolo_detect_line(cls_idx, a.cx, a.cy, a.width, a.height)
+        cx, cy, w, h = a.cx, a.cy, a.width, a.height
+        # A rotated annotation (e.g. from SAM2's minAreaRect) must be exported as
+        # its upright bounding box, not its rotated local width/height.
+        ang = (a.angle or 0.0) % 360.0
+        if ang > 1e-6 and abs(ang - 360.0) > 1e-6:
+            cx, cy, w, h = obb_to_aabb(a.cx, a.cy, a.width, a.height, a.angle, frame.width, frame.height)
+        return yolo_detect_line(cls_idx, cx, cy, w, h)
 
     @staticmethod
     def _segment_line(a, frame, cls_idx) -> str:

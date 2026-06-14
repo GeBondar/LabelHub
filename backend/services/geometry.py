@@ -116,6 +116,36 @@ def yolo_obb_line(
     return f"{class_idx} {coords}"
 
 
+def obb_to_aabb(
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    angle: float,
+    img_w: int,
+    img_h: int,
+) -> Tuple[float, float, float, float]:
+    """Axis-aligned bounding box (normalized cx, cy, w, h) enclosing an OBB.
+
+    A rotated box must be represented for detection by the upright box that fully
+    contains it (the min/max of its 4 corners), not by its own rotated
+    width/height. Corners are computed in pixel space (images aren't square).
+    """
+    corners = obb_corners_px(cx, cy, width, height, angle, img_w, img_h)
+    xs = [p[0] for p in corners]
+    ys = [p[1] for p in corners]
+    if img_w <= 0 or img_h <= 0:
+        return cx, cy, width, height
+    x0, x1 = min(xs), max(xs)
+    y0, y1 = min(ys), max(ys)
+    return (
+        ((x0 + x1) / 2.0) / img_w,
+        ((y0 + y1) / 2.0) / img_h,
+        (x1 - x0) / img_w,
+        (y1 - y0) / img_h,
+    )
+
+
 def yolo_detect_line(
     class_idx: int,
     cx: float,
