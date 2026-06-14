@@ -183,6 +183,11 @@ export default function AnnotationCanvas({
   const pendingSaveRef = useRef(false);
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
+  // Live mirror of selectedClassId. Fabric mouse handlers are bound once per
+  // frame and would otherwise capture a stale selectedClassId — so a class
+  // picked after the frame loaded wouldn't apply to newly drawn objects. Read
+  // this ref in the create paths so the current class is always used.
+  const selectedClassIdRef = useRef(selectedClassId);
   const { addToast, annotations: allAnnotations, updateAnnotationLocal, removeAnnotationLocal, setAnnotationsForFrame } = useApp();
 
   const currentAnnotations = frame ? (allAnnotations[frame.id] || annotations) : [];
@@ -256,6 +261,10 @@ export default function AnnotationCanvas({
   useEffect(() => {
     modeRef.current = canvasMode;
   }, [canvasMode]);
+
+  useEffect(() => {
+    selectedClassIdRef.current = selectedClassId;
+  }, [selectedClassId]);
 
   // Poll the SAM2 load state for the status badge. The backend warms it up in
   // the background at startup; we poll fast while it's still loading and slow
@@ -675,6 +684,7 @@ export default function AnnotationCanvas({
   }
 
   function renderPolygonDraft() {
+    const selectedClassId = selectedClassIdRef.current;
     const canvas = fabricRef.current;
     if (!canvas) return;
     if (polyPreviewRef.current) canvas.remove(polyPreviewRef.current);
@@ -731,6 +741,7 @@ export default function AnnotationCanvas({
   }
 
   async function finishPolygon() {
+    const selectedClassId = selectedClassIdRef.current;
     const pts = polyPointsRef.current;
     if (pts.length < 3) {
       addToast('Нужно минимум 3 точки для полигона', 'warning', 2000);
@@ -749,6 +760,7 @@ export default function AnnotationCanvas({
   }
 
   async function createSegmentAnnotation(normPoints) {
+    const selectedClassId = selectedClassIdRef.current;
     const canvas = fabricRef.current;
     if (!canvas || !frame) return;
     try {
@@ -1061,6 +1073,7 @@ export default function AnnotationCanvas({
   }
 
   async function createAnnotation(drawRect) {
+    const selectedClassId = selectedClassIdRef.current;
     if (!frame || !selectedClassId) {
       addToast('Выберите класс перед рисованием', 'warning');
       return;
@@ -1130,6 +1143,7 @@ export default function AnnotationCanvas({
   // the polygon; detect stores an axis-aligned bbox (SAM returns a rotated
   // minAreaRect, which is wrong for detect); OBB keeps the oriented box.
   function samPayload(obb) {
+    const selectedClassId = selectedClassIdRef.current;
     if (isSegment && obb.points && obb.points.length >= 3) {
       return { class_id: selectedClassId, cx: 0, cy: 0, width: 0.0001, height: 0.0001, angle: 0, points: obb.points };
     }
@@ -1150,6 +1164,7 @@ export default function AnnotationCanvas({
   }
 
   async function handleSAMClick(opt, canvas) {
+    const selectedClassId = selectedClassIdRef.current;
     if (!frame) return;
     if (!selectedClassId) {
       addToast('Выберите класс перед использованием SAM2', 'warning');
@@ -1187,6 +1202,7 @@ export default function AnnotationCanvas({
   }
 
   async function handleSAMBox(drawRect) {
+    const selectedClassId = selectedClassIdRef.current;
     if (!frame) return;
     if (!selectedClassId) {
       addToast('Выберите класс перед использованием SAM2', 'warning');
