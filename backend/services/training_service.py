@@ -128,7 +128,11 @@ class TrainingService:
             splits=splits,
             task_type=task_type,
         )
-        return dataset_dir
+        return {
+            "dataset_dir": dataset_dir,
+            "train_count": len(train_frames),
+            "val_count": len(val_frames),
+        }
 
     # ------------------------------------------------------------------- start
     async def start_run(self, run_id: int):

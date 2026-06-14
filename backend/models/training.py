@@ -24,6 +24,10 @@ class TrainingRun(Base):
     dataset_dir = Column(String(1024), default="")
     run_dir = Column(String(1024), default="")
 
+    # How the labeled frames were split for this run (train/val; no test set).
+    train_count = Column(Integer, default=0)
+    val_count = Column(Integer, default=0)
+
     # Lifecycle
     status = Column(String(32), nullable=False, default="pending")  # pending|running|completed|failed|stopped
     pid = Column(Integer, nullable=True)

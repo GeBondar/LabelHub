@@ -2,7 +2,7 @@
   "name": "labelhub",
   "productName": "LabelHub",
   "version": "1.0.0",
-  "description": "LabelHub — local annotation & training tool for YOLOv8-OBB",
+  "description": "LabelHub — annotation, training and model storage tool",
   "type": "module",
   "main": "main.cjs",
   "scripts": {

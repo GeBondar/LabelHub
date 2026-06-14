@@ -31,6 +31,13 @@ async def _migrate(conn):
             text("ALTER TABLE projects ADD COLUMN task_type VARCHAR(16) DEFAULT 'obb'")
         )
 
+    result = await conn.execute(text("PRAGMA table_info(training_runs)"))
+    run_columns = {row[1] for row in result.fetchall()}
+    if "train_count" not in run_columns:
+        await conn.execute(text("ALTER TABLE training_runs ADD COLUMN train_count INTEGER DEFAULT 0"))
+    if "val_count" not in run_columns:
+        await conn.execute(text("ALTER TABLE training_runs ADD COLUMN val_count INTEGER DEFAULT 0"))
+
 
 async def init_db():
     from backend.models.project import Project, VideoFile, ClassLabel

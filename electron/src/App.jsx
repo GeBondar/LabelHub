@@ -285,7 +285,7 @@ export default function App() {
                   LabelHub
                 </h1>
                 <span className="text-xs text-slate-500 hidden sm:inline">
-                  Инструмент аннотации YOLOv8-OBB
+                  Инструмент аннотации, обучения и хранения моделей
                 </span>
               </div>
               <div className="flex items-center gap-4">

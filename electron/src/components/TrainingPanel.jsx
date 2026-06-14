@@ -156,7 +156,11 @@ export default function TrainingPanel({ projectId, taskType = 'obb', onClose }) 
         device,
         val_ratio: Number(valRatio),
       });
-      addToast('Обучение запущено', 'success');
+      const r = res.data || {};
+      addToast(
+        `Обучение запущено · train ${r.train_count ?? '?'} / val ${r.val_count ?? '?'} кадров`,
+        'success', 4000,
+      );
       await loadRuns();
       setSelectedRunId(res.data.id);
       setChartData([]);
@@ -419,6 +423,20 @@ export default function TrainingPanel({ projectId, taskType = 'obb', onClose }) 
                     </div>
                   </div>
                 </div>
+
+                {/* Dataset split actually used for this run (train/val, no test). */}
+                {(selectedRun.train_count > 0 || selectedRun.val_count > 0) && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2 py-0.5 rounded bg-slate-700/60 border border-slate-600 text-slate-300">
+                      Датасет: <b className="text-blue-300">train {selectedRun.train_count}</b>
+                      {' · '}<b className="text-emerald-300">val {selectedRun.val_count}</b>
+                      {' · '}<span className="text-slate-500">test 0</span>
+                    </span>
+                    <span className="text-slate-500">
+                      кадров (обучение использует train/val, без test)
+                    </span>
+                  </div>
+                )}
 
                 {/* progress */}
                 <div>

@@ -75,6 +75,8 @@ class TrainRunOut(BaseModel):
     current_epoch: int
     best_map50: float
     best_map5095: float
+    train_count: int = 0
+    val_count: int = 0
     run_dir: str
     error: str
     created_at: Optional[str]
@@ -98,6 +100,8 @@ def _to_out(run: TrainingRun) -> TrainRunOut:
         current_epoch=run.current_epoch or 0,
         best_map50=run.best_map50 or 0.0,
         best_map5095=run.best_map5095 or 0.0,
+        train_count=run.train_count or 0,
+        val_count=run.val_count or 0,
         run_dir=run.run_dir or "",
         error=run.error or "",
         created_at=str(run.created_at) if run.created_at else None,
@@ -162,11 +166,15 @@ async def start_training(
 
     # Build the dataset on disk first so config errors surface immediately.
     try:
-        dataset_dir = await training_service.prepare_dataset(project_id, db, data.val_ratio)
+        prep = await training_service.prepare_dataset(project_id, db, data.val_ratio)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Не удалось подготовить датасет: {e}")
+
+    dataset_dir = prep["dataset_dir"]
+    train_count = prep["train_count"]
+    val_count = prep["val_count"]
 
     runs_root = os.path.join(config.DATA_DIR, "projects", str(project_id), "training", "runs")
     run_name = data.name or f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -183,6 +191,8 @@ async def start_training(
         params_json=json.dumps(data.model_dump()),
         dataset_dir=dataset_dir,
         run_dir=run_dir,
+        train_count=train_count,
+        val_count=val_count,
         status="pending",
     )
     db.add(run)
