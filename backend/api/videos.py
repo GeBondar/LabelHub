@@ -107,6 +107,29 @@ async def upload_video(
     )
 
 
+@router.get("/{project_id}/list", response_model=list[VideoOut])
+async def list_project_videos(project_id: int, db: AsyncSession = Depends(get_db)):
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    result = await db.execute(
+        select(VideoFile).where(VideoFile.project_id == project_id).order_by(VideoFile.created_at.desc())
+    )
+    videos = result.scalars().all()
+    return [
+        VideoOut(
+            id=v.id,
+            project_id=v.project_id,
+            original_filename=v.original_filename,
+            fps=v.fps,
+            total_frames=v.total_frames,
+            duration_seconds=v.duration_seconds,
+            created_at=str(v.created_at) if v.created_at else None,
+        )
+        for v in videos
+    ]
+
+
 @router.post("/extract/{video_id}", response_model=list[FrameOut])
 async def extract_frames(
     video_id: int,

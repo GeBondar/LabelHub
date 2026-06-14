@@ -73,9 +73,15 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
     try {
       const fileObj = file.path
         ? await (async () => {
-            const res = await fetch(`file://${file.path}`);
+            // Windows paths use backslashes and a drive letter; a valid file URL
+            // needs forward slashes, three leading slashes and percent-encoding
+            // (spaces etc.). 'file://C:\...' would silently fail to load.
+            const url = 'file:///' + encodeURI(file.path.replace(/\\/g, '/'));
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Не удалось прочитать файл (${res.status})`);
             const blob = await res.blob();
-            return new File([blob], file.name, { type: 'video/mp4' });
+            if (!blob.size) throw new Error('Файл пуст или недоступен');
+            return new File([blob], file.name, { type: blob.type || 'video/mp4' });
           })()
         : file;
 

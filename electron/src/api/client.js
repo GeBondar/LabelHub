@@ -3,19 +3,37 @@ import axios from 'axios';
 const BASE_URL = 'http://localhost:8787';
 const WS_URL = 'ws://localhost:8787/ws';
 
+// Note: no default Content-Type header. axios auto-sets application/json for
+// plain-object bodies and multipart/form-data (with boundary) for FormData.
+// Forcing application/json here makes axios 1.x serialize FormData to JSON,
+// which strips the file and triggers a 422 "Field required" on uploads.
 const api = axios.create({
   baseURL: BASE_URL + '/api',
   timeout: 300000,
-  headers: { 'Content-Type': 'application/json' },
 });
+
+// FastAPI returns `detail` as a string for HTTPException, but as an array of
+// {loc,msg,type} objects for 422 validation errors. Stringifying the latter
+// naively yields "[object Object]", so flatten it to a readable message.
+function extractErrorMessage(error) {
+  const detail = error.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => (d && typeof d === 'object' ? (d.msg || JSON.stringify(d)) : String(d)))
+      .join('; ');
+  }
+  if (detail && typeof detail === 'object') {
+    return detail.msg || JSON.stringify(detail);
+  }
+  return error.message || 'Неизвестная ошибка';
+}
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.detail || error.message || 'Неизвестная ошибка';
-    const status = error.response?.status;
-    const enriched = new Error(message);
-    enriched.status = status;
+    const enriched = new Error(extractErrorMessage(error));
+    enriched.status = error.response?.status;
     enriched.originalError = error;
     return Promise.reject(enriched);
   }
@@ -130,6 +148,7 @@ const apiClient = {
   },
   extractFrames: (videoId, fps) =>
     api.post(`/videos/extract/${videoId}?fps=${fps}`),
+  getProjectVideos: (projectId) => api.get(`/videos/${projectId}/list`),
 
   // Frames
   getVideoFrames: (videoId, params = {}) =>
@@ -200,6 +219,22 @@ const apiClient = {
   deleteTrainingRun: (runId) => api.delete(`/training/run/${runId}`),
   startTensorboard: (projectId) => api.post(`/training/${projectId}/tensorboard`),
   tensorboardStatus: () => api.get('/training/tensorboard/status'),
+
+  // Models registry
+  getModels: () => api.get('/models/'),
+  importModel: (data) => api.post('/models/import', data),
+  renameModel: (modelId, name) => api.patch(`/models/${modelId}`, { name }),
+  deleteModel: (modelId) => api.delete(`/models/${modelId}`),
+  exportModelUrl: (modelId) => `${BASE_URL}/api/models/${modelId}/export`,
+
+  // Inference sessions
+  startInference: (data) => api.post('/inference/start', data),
+  inferenceControl: (sid, action, value) =>
+    api.post(`/inference/${sid}/control`, { action, value }),
+  inferenceStatus: (sid) => api.get(`/inference/${sid}/status`),
+  stopInference: (sid) => api.post(`/inference/${sid}/stop`),
+  inferenceStreamUrl: (sid) => `${BASE_URL}/api/inference/${sid}/stream`,
+  inferenceDownloadUrl: (sid) => `${BASE_URL}/api/inference/${sid}/download`,
 
   // Health
   healthCheck: () => axios.get(`${BASE_URL}/api/health`),

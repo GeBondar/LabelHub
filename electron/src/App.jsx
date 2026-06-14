@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
 import {
   Home,
   FolderOpen,
@@ -8,9 +8,12 @@ import {
   Wifi,
   WifiOff,
   ChevronLeft,
+  Database,
+  Boxes,
 } from 'lucide-react';
 import ProjectList from './components/ProjectList';
 import ProjectWorkspace from './components/ProjectWorkspace';
+import ModelList from './components/ModelList';
 import apiClient from './api/client';
 
 export const AppContext = createContext(null);
@@ -179,6 +182,28 @@ function AppProvider({ children }) {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
+function MainNav() {
+  const location = useLocation();
+  // Hide tabs inside the per-project workspace to keep its own toolbar clean.
+  if (location.pathname.startsWith('/project/')) return null;
+  const linkClass = ({ isActive }) =>
+    `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+      isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'
+    }`;
+  return (
+    <nav className="flex items-center gap-1">
+      <NavLink to="/" end className={linkClass}>
+        <Database size={15} />
+        Датасеты
+      </NavLink>
+      <NavLink to="/models" className={linkClass}>
+        <Boxes size={15} />
+        Модели
+      </NavLink>
+    </nav>
+  );
+}
+
 function StatusIndicator() {
   const { backendStatus } = useApp();
   const statusConfig = {
@@ -264,12 +289,14 @@ export default function App() {
                 </span>
               </div>
               <div className="flex items-center gap-4">
+                <MainNav />
                 <StatusIndicator />
               </div>
             </header>
             <main className="flex-1 overflow-hidden">
               <Routes>
                 <Route path="/" element={<ProjectList />} />
+                <Route path="/models" element={<ModelList />} />
                 <Route path="/project/:id" element={<ProjectWorkspace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

@@ -16,6 +16,22 @@ class Config:
     SERVER_PORT: int = 8787
 
     @classmethod
+    def relocate(cls, stored_path: str) -> str:
+        """Re-root an absolute path stored from a previous repo location under the
+        current DATA_DIR. Paths in the DB were saved with absolute paths from when
+        the repo lived elsewhere (e.g. battlebots_ai); re-root them at the
+        'projects/' segment, mirroring how the frontend resolves frame images."""
+        if not stored_path or os.path.exists(stored_path):
+            return stored_path
+        norm = stored_path.replace("\\", "/")
+        idx = norm.rfind("projects/")
+        if idx >= 0:
+            candidate = os.path.normpath(os.path.join(cls.DATA_DIR, norm[idx:]))
+            if os.path.exists(candidate):
+                return candidate
+        return stored_path
+
+    @classmethod
     def ensure_dirs(cls):
         os.makedirs(cls.DATA_DIR, exist_ok=True)
         models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")

@@ -46,7 +46,7 @@ class ExportService:
                 base_name = os.path.splitext(img_name)[0]
 
                 try:
-                    shutil.copy2(frame.image_path, os.path.join(img_dir, img_name))
+                    shutil.copy2(config.relocate(frame.image_path), os.path.join(img_dir, img_name))
                 except FileNotFoundError:
                     continue
 
@@ -122,7 +122,7 @@ class ExportService:
                 img_dir = os.path.join(output_dir, split_name, "images")
                 os.makedirs(img_dir, exist_ok=True)
                 try:
-                    shutil.copy2(frame.image_path, os.path.join(img_dir, img_name))
+                    shutil.copy2(config.relocate(frame.image_path), os.path.join(img_dir, img_name))
                 except FileNotFoundError:
                     pass
 
@@ -183,7 +183,7 @@ class ExportService:
                 base_name = os.path.splitext(img_name)[0]
 
                 try:
-                    shutil.copy2(frame.image_path, os.path.join(img_dir, img_name))
+                    shutil.copy2(config.relocate(frame.image_path), os.path.join(img_dir, img_name))
                 except FileNotFoundError:
                     continue
 

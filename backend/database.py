@@ -27,6 +27,7 @@ async def init_db():
     from backend.models.project import Project, VideoFile, ClassLabel
     from backend.models.annotation import Frame, OrientedBBox
     from backend.models.training import TrainingRun
+    from backend.models.ml_model import MLModel
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

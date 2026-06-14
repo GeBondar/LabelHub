@@ -238,7 +238,7 @@ export default function ProjectList() {
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 flex-shrink-0">
         <div>
-          <h2 className="text-xl font-bold">Проекты</h2>
+          <h2 className="text-xl font-bold">Датасеты</h2>
           <p className="text-sm text-slate-400 mt-0.5">Управление проектами аннотации</p>
         </div>
         <div className="flex items-center gap-3">

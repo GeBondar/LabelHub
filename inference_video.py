@@ -1,9 +1,11 @@
+import os
 import cv2
 import numpy as np
 import math
 from ultralytics import YOLO
 
-MODEL_PATH = r"C:\Users\George\Documents\GitHub\battlebots_ai\data\projects\3\training\runs\run_20260614_040103\weights\best.pt"
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(_ROOT, "data", "projects", "3", "training", "runs", "run_20260614_040103", "weights", "best.pt")
 VIDEO_PATH = r"C:\Users\George\Downloads\Telegram Desktop\2025-05-31 14-34-17-converted.mp4"
 
 COLORS = {

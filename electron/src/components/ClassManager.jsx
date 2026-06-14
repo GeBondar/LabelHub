@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Plus,
@@ -9,6 +10,7 @@ import {
   AlertCircle,
   Check,
   Upload,
+  Shuffle,
 } from 'lucide-react';
 import { useApp } from '../App';
 import apiClient from '../api/client';
@@ -20,23 +22,101 @@ const PRESET_COLORS = [
   '#10b981', '#f59e0b', '#64748b', '#78716c', '#6d28d9',
 ];
 
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const toHex = (x) => Math.round(255 * x).toString(16).padStart(2, '0');
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+
+function hexToHue(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return null;
+  const int = parseInt(m[1], 16);
+  const r = ((int >> 16) & 255) / 255;
+  const g = ((int >> 8) & 255) / 255;
+  const b = (int & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return null; // greys have no meaningful hue
+  let h;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60;
+  return h < 0 ? h + 360 : h;
+}
+
+// Pick a vivid, pleasant color whose hue is as far as possible from the hues
+// already in use, so successive classes stay visually distinct.
+function randomPleasantColor(existingHexes = []) {
+  const usedHues = existingHexes.map(hexToHue).filter((h) => h !== null);
+  let bestHue = Math.random() * 360;
+  let bestDist = -1;
+  for (let i = 0; i < 32; i++) {
+    const h = Math.random() * 360;
+    const dist = usedHues.length
+      ? Math.min(...usedHues.map((u) => {
+          const d = Math.abs(u - h);
+          return Math.min(d, 360 - d);
+        }))
+      : 360;
+    if (dist > bestDist) {
+      bestDist = dist;
+      bestHue = h;
+    }
+  }
+  const sat = 62 + Math.random() * 16; // 62–78%
+  const light = 52 + Math.random() * 10; // 52–62%
+  return hslToHex(bestHue, sat, light);
+}
+
 function ColorPicker({ value, onChange }) {
   const [show, setShow] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+
+  const toggle = () => {
+    if (show) {
+      setShow(false);
+      return;
+    }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) {
+      // Fixed positioning + portal so the popup is never clipped by the
+      // scrollable class list it lives inside.
+      const left = Math.min(r.left, window.innerWidth - 240);
+      const top = Math.min(r.bottom + 8, window.innerHeight - 180);
+      setPos({ top, left: Math.max(8, left) });
+    }
+    setShow(true);
+  };
+
   return (
-    <div className="relative">
+    <>
       <button
-        className="w-8 h-8 rounded-lg border-2 border-slate-600 hover:border-slate-400 transition"
+        ref={btnRef}
+        type="button"
+        className="w-8 h-8 rounded-lg border-2 border-slate-600 hover:border-slate-400 transition flex-shrink-0"
         style={{ backgroundColor: value }}
-        onClick={() => setShow(!show)}
+        onClick={toggle}
       />
-      {show && (
+      {show && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setShow(false)} />
-          <div className="absolute z-20 top-full mt-2 left-0 bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl w-56">
+          <div className="fixed inset-0 z-[60]" onClick={() => setShow(false)} />
+          <div
+            className="fixed z-[61] bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl w-56"
+            style={{ top: pos.top, left: pos.left }}
+          >
             <div className="grid grid-cols-5 gap-2 mb-2">
               {PRESET_COLORS.map((c) => (
                 <button
                   key={c}
+                  type="button"
                   className={`w-8 h-8 rounded-md border-2 transition ${
                     value === c ? 'border-white' : 'border-transparent hover:border-slate-400'
                   }`}
@@ -60,9 +140,10 @@ function ColorPicker({ value, onChange }) {
               />
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
@@ -74,7 +155,7 @@ export default function ClassManager({ projectId, onClose }) {
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
   const [newName, setNewName] = useState('');
-  const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
+  const [newColor, setNewColor] = useState(() => randomPleasantColor());
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +168,9 @@ export default function ClassManager({ projectId, onClose }) {
     setLoading(true);
     try {
       const res = await apiClient.getClasses(projectId);
-      setLocalClasses(res.data || []);
+      const list = res.data || [];
+      setLocalClasses(list);
+      setNewColor(randomPleasantColor(list.map((c) => c.color)));
     } catch {
       addToast('Ошибка загрузки классов', 'error');
     } finally {
@@ -107,9 +190,10 @@ export default function ClassManager({ projectId, onClose }) {
         name: newName.trim(),
         color: newColor,
       });
-      setLocalClasses([...localClasses, res.data]);
+      const updated = [...localClasses, res.data];
+      setLocalClasses(updated);
       setNewName('');
-      setNewColor(PRESET_COLORS[localClasses.length % PRESET_COLORS.length]);
+      setNewColor(randomPleasantColor(updated.map((c) => c.color)));
       await loadClasses(projectId);
       addToast('Класс добавлен', 'success');
     } catch (err) {
@@ -244,6 +328,14 @@ export default function ClassManager({ projectId, onClose }) {
               <h3 className="text-sm font-medium text-slate-400 mb-2">Добавить класс</h3>
               <div className="flex items-center gap-2">
                 <ColorPicker value={newColor} onChange={setNewColor} />
+                <button
+                  type="button"
+                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition flex-shrink-0"
+                  onClick={() => setNewColor(randomPleasantColor(localClasses.map((c) => c.color)))}
+                  title="Случайный цвет"
+                >
+                  <Shuffle size={16} />
+                </button>
                 <input
                   className="input-field flex-1 text-sm py-1.5"
                   value={newName}

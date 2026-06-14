@@ -144,6 +144,17 @@ function setupIpcHandlers() {
     return result.canceled ? null : result.filePaths[0];
   });
 
+  ipcMain.handle('select-model-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите файл весов модели',
+      filters: [
+        { name: 'Веса PyTorch', extensions: ['pt'] },
+      ],
+      properties: ['openFile'],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+
   ipcMain.handle('select-image-file', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Выберите изображение',

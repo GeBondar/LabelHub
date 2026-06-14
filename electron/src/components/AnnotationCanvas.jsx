@@ -616,8 +616,23 @@ export default function AnnotationCanvas({
         deleteAnnotation(target);
       }
     } else if (currentMode === MODES.SAM_CLICK) {
+      // Clicking an existing box selects it (to move/rotate/delete) instead of
+      // re-running SAM2 and spawning a duplicate over the same object.
+      const target = canvas.findTarget(evt, false);
+      if (target && target.annotationData) {
+        canvas.setActiveObject(target);
+        canvas.renderAll();
+        return;
+      }
       handleSAMClick(opt, canvas);
     } else if (currentMode === MODES.SAM_BOX) {
+      // Same here: grab an existing box rather than starting a new SAM region.
+      const target = canvas.findTarget(evt, false);
+      if (target && target.annotationData) {
+        canvas.setActiveObject(target);
+        canvas.renderAll();
+        return;
+      }
       startDraw(opt, canvas);
     }
   }

@@ -16,6 +16,8 @@ from backend.api import (
     exports_router,
     files_router,
     training_router,
+    models_router,
+    inference_router,
 )
 from backend.services.websocket_manager import ws_manager
 
@@ -60,6 +62,8 @@ app.include_router(annotations_router)
 app.include_router(exports_router)
 app.include_router(files_router)
 app.include_router(training_router)
+app.include_router(models_router)
+app.include_router(inference_router)
 
 # Static files mount for serving images
 data_dir = config.DATA_DIR

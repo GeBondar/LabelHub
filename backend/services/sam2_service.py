@@ -65,6 +65,9 @@ class SAM2Service:
     async def predict_from_click(self, image_path: str, x: float, y: float) -> dict:
         self._ensure_model()
 
+        image_path = config.relocate(image_path)
+        if not os.path.exists(image_path):
+            raise RuntimeError(f"Файл кадра не найден: {image_path}")
         image = Image.open(image_path).convert("RGB")
         image_np = np.array(image)
         orig_h, orig_w = image_np.shape[:2]
@@ -112,6 +115,9 @@ class SAM2Service:
     async def predict_from_box(self, image_path: str, x1: float, y1: float, x2: float, y2: float) -> dict:
         self._ensure_model()
 
+        image_path = config.relocate(image_path)
+        if not os.path.exists(image_path):
+            raise RuntimeError(f"Файл кадра не найден: {image_path}")
         image = Image.open(image_path).convert("RGB")
         image_np = np.array(image)
         orig_h, orig_w = image_np.shape[:2]
