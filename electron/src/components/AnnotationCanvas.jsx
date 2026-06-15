@@ -189,6 +189,13 @@ export default function AnnotationCanvas({
   // picked after the frame loaded wouldn't apply to newly drawn objects. Read
   // this ref in the create paths so the current class is always used.
   const selectedClassIdRef = useRef(selectedClassId);
+  // Region-delete (marquee) in DELETE mode: drag a rectangle to mark objects,
+  // then press Delete to remove all of them at once.
+  const isMarqueeRef = useRef(false);
+  const marqueeStartRef = useRef(null);
+  const marqueeRectRef = useRef(null);
+  const pendingDeleteRef = useRef(new Set());
+  const [pendingDeleteCount, setPendingDeleteCount] = useState(0);
   const { addToast, annotations: allAnnotations, updateAnnotationLocal, removeAnnotationLocal, setAnnotationsForFrame } = useApp();
 
   const currentAnnotations = frame ? (allAnnotations[frame.id] || annotations) : [];
@@ -237,8 +244,25 @@ export default function AnnotationCanvas({
     if (!deleteActiveRef) return;
     deleteActiveRef.current = () => {
       const canvas = fabricRef.current;
-      const active = canvas?.getActiveObject();
-      if (active && active.annotationData) {
+      if (!canvas) return false;
+      // 1) Region-delete: a marquee in DELETE mode marked several objects.
+      if (pendingDeleteRef.current.size > 0) {
+        deleteManyByIds([...pendingDeleteRef.current]);
+        return true;
+      }
+      const active = canvas.getActiveObject();
+      if (!active) return false;
+      // 2) A multi-object selection (drag-select in EDIT mode).
+      if (active.type === 'activeSelection') {
+        const ids = active.getObjects()
+          .filter((o) => o.annotationData)
+          .map((o) => o.annotationData.id);
+        canvas.discardActiveObject();
+        if (ids.length) { deleteManyByIds(ids); return true; }
+        return false;
+      }
+      // 3) A single selected object (clicked on canvas or in the panel list).
+      if (active.annotationData) {
         deleteAnnotation(active);
         return true;
       }
@@ -314,6 +338,12 @@ export default function AnnotationCanvas({
     polyPointsRef.current = [];
     polyPreviewRef.current = null;
     polyMarkersRef.current = [];
+    // Region-delete selection doesn't carry across frames.
+    isMarqueeRef.current = false;
+    marqueeStartRef.current = null;
+    marqueeRectRef.current = null;
+    pendingDeleteRef.current = new Set();
+    setPendingDeleteCount(0);
 
     if (fabricRef.current) {
       fabricRef.current.dispose();
@@ -446,18 +476,26 @@ export default function AnnotationCanvas({
     if (currentAnnotations && currentAnnotations.length > 0) {
       currentAnnotations.forEach((ann) => drawAnnotation(canvas, ann));
     }
+    // Keep objects non-movable while in DELETE mode after a re-render.
+    if (modeRef.current === MODES.DELETE) {
+      canvas.getObjects().forEach((o) => { if (o.annotationData) o.selectable = false; });
+    }
     canvas.renderAll();
   }, [currentAnnotations, classes]);
 
   useEffect(() => {
-    if (fabricRef.current) {
-      const canvas = fabricRef.current;
-      canvas.selection = modeRef.current === MODES.EDIT;
-      if (modeRef.current !== MODES.EDIT) {
-        canvas.discardActiveObject();
-        canvas.renderAll();
-      }
+    const canvas = fabricRef.current;
+    if (canvas) {
+      canvas.selection = canvasMode === MODES.EDIT;
+      if (canvasMode !== MODES.EDIT) canvas.discardActiveObject();
+      // In DELETE mode objects can be marked (findTarget still works via
+      // `evented`) but not moved/resized — so a marquee/click never drags them.
+      const selectable = canvasMode !== MODES.DELETE;
+      canvas.getObjects().forEach((o) => { if (o.annotationData) o.selectable = selectable; });
+      canvas.renderAll();
     }
+    // Leaving DELETE mode drops any region-delete selection.
+    if (canvasMode !== MODES.DELETE) clearPendingDelete();
   }, [canvasMode]);
 
   function loadImage(canvas, containerW, containerH) {
@@ -973,9 +1011,13 @@ export default function AnnotationCanvas({
       }
       startDraw(opt, canvas);
     } else if (currentMode === MODES.DELETE) {
+      // Click an object to mark/unmark it; drag on empty space to marquee-select
+      // a region. Then Delete removes everything marked.
       const target = canvas.findTarget(evt, false);
       if (target && target.annotationData) {
-        deleteAnnotation(target);
+        togglePendingDelete(target);
+      } else {
+        startMarquee(opt, canvas);
       }
     } else if (currentMode === MODES.SAM_CLICK) {
       // Clicking an existing box selects it (to move/rotate/delete) instead of
@@ -1011,6 +1053,20 @@ export default function AnnotationCanvas({
       return;
     }
 
+    if (isMarqueeRef.current && marqueeRectRef.current && canvas) {
+      const pointer = canvas.getPointer(opt.e);
+      const start = marqueeStartRef.current;
+      marqueeRectRef.current.set({
+        left: Math.min(start.x, pointer.x),
+        top: Math.min(start.y, pointer.y),
+        width: Math.abs(pointer.x - start.x),
+        height: Math.abs(pointer.y - start.y),
+      });
+      marqueeRectRef.current.setCoords();
+      canvas.renderAll();
+      return;
+    }
+
     if (isDrawingRef.current && drawRectRef.current && canvas) {
       const pointer = canvas.getPointer(opt.e);
       const start = drawStartRef.current;
@@ -1035,6 +1091,11 @@ export default function AnnotationCanvas({
       canvas.getObjects().forEach((o) => {
         if (o.annotationData) o.selectable = true;
       });
+      return;
+    }
+
+    if (isMarqueeRef.current) {
+      finalizeMarquee(canvas);
       return;
     }
 
@@ -1149,11 +1210,103 @@ export default function AnnotationCanvas({
         delete labelMapRef.current[data.id];
       }
       removeAnnotationLocal(frame.id, data.id);
+      canvas.discardActiveObject();
       canvas.renderAll();
       addToast('Аннотация удалена', 'success', 2000);
     } catch (e) {
       addToast('Ошибка удаления аннотации', 'error');
     }
+  }
+
+  // ---------------------------------------------- region (marquee) deletion
+  function setPendingHighlight(obj, on) {
+    if (!obj) return;
+    if (on) {
+      obj.set({ stroke: '#ef4444', strokeWidth: 4, fill: 'rgba(239,68,68,0.20)' });
+    } else {
+      const cls = classes.find((c) => c.id === obj.annotationData?.class_id);
+      const color = cls?.color || '#3b82f6';
+      obj.set({ stroke: color, strokeWidth: 2, fill: obj.type === 'polygon' ? `${color}33` : `${color}22` });
+    }
+  }
+
+  function togglePendingDelete(obj) {
+    const id = obj.annotationData?.id;
+    if (id == null) return;
+    const set = pendingDeleteRef.current;
+    if (set.has(id)) { set.delete(id); setPendingHighlight(obj, false); }
+    else { set.add(id); setPendingHighlight(obj, true); }
+    setPendingDeleteCount(set.size);
+    fabricRef.current?.renderAll();
+  }
+
+  function startMarquee(opt, canvas) {
+    const pointer = canvas.getPointer(opt.e);
+    isMarqueeRef.current = true;
+    marqueeStartRef.current = { x: pointer.x, y: pointer.y };
+    marqueeRectRef.current = new fabric.Rect({
+      left: pointer.x, top: pointer.y, width: 0, height: 0,
+      fill: 'rgba(239,68,68,0.12)', stroke: '#ef4444', strokeWidth: 1.5,
+      strokeDashArray: [5, 4], strokeUniform: true, selectable: false, evented: false,
+    });
+    canvas.add(marqueeRectRef.current);
+    canvas.renderAll();
+  }
+
+  function finalizeMarquee(canvas) {
+    const rect = marqueeRectRef.current;
+    isMarqueeRef.current = false;
+    marqueeStartRef.current = null;
+    if (!rect) return;
+    const m = { left: rect.left, top: rect.top, right: rect.left + rect.width, bottom: rect.top + rect.height };
+    canvas.remove(rect);
+    marqueeRectRef.current = null;
+    if (rect.width < 4 && rect.height < 4) { canvas.renderAll(); return; }  // a click, not a drag
+    const set = pendingDeleteRef.current;
+    for (const o of canvas.getObjects()) {
+      if (!o.annotationData) continue;
+      const b = o.getBoundingRect(true);
+      const overlaps = !(b.left + b.width < m.left || b.left > m.right
+        || b.top + b.height < m.top || b.top > m.bottom);
+      if (overlaps && !set.has(o.annotationData.id)) {
+        set.add(o.annotationData.id);
+        setPendingHighlight(o, true);
+      }
+    }
+    setPendingDeleteCount(set.size);
+    canvas.renderAll();
+  }
+
+  function clearPendingDelete() {
+    const canvas = fabricRef.current;
+    const set = pendingDeleteRef.current;
+    if (canvas && set.size) {
+      for (const o of canvas.getObjects()) {
+        if (o.annotationData && set.has(o.annotationData.id)) setPendingHighlight(o, false);
+      }
+    }
+    set.clear();
+    setPendingDeleteCount(0);
+    canvas?.renderAll();
+  }
+
+  async function deleteManyByIds(ids) {
+    const canvas = fabricRef.current;
+    if (!canvas || !frame || ids.length === 0) return;
+    pushUndo();
+    for (const id of ids) {
+      try { await apiClient.deleteAnnotation(id); } catch (e) { /* keep going */ }
+      const obj = canvas.getObjects().find((o) => o.annotationData?.id === id);
+      if (obj) canvas.remove(obj);
+      const labelObj = labelMapRef.current[id];
+      if (labelObj) { canvas.remove(labelObj); delete labelMapRef.current[id]; }
+      removeAnnotationLocal(frame.id, id);
+      pendingDeleteRef.current.delete(id);
+    }
+    setPendingDeleteCount(pendingDeleteRef.current.size);
+    canvas.discardActiveObject();
+    canvas.renderAll();
+    addToast(`Удалено объектов: ${ids.length}`, 'success', 2000);
   }
 
   // Build the create payload from a SAM2 response per task type. Segment stores
@@ -1368,6 +1521,13 @@ export default function AnnotationCanvas({
       }
     }
 
+    // Escape clears a region-delete selection.
+    if (e.key === 'Escape' && pendingDeleteRef.current.size > 0) {
+      e.preventDefault();
+      clearPendingDelete();
+      return;
+    }
+
     // Delete is handled once at the workspace level (deleteActiveRef) so it
     // works whether focus is on the canvas or the annotations panel, without
     // double-firing.
@@ -1577,6 +1737,17 @@ export default function AnnotationCanvas({
         <div className="h-7 bg-purple-900/30 border-b border-purple-700/30 flex items-center px-3 gap-2 flex-shrink-0">
           <Square size={14} className="text-purple-400" />
           <span className="text-xs text-purple-300">SAM2 Box: обведите объект рамкой</span>
+        </div>
+      )}
+
+      {canvasMode === MODES.DELETE && (
+        <div className="h-7 bg-red-900/30 border-b border-red-700/30 flex items-center px-3 gap-2 flex-shrink-0">
+          <Trash2 size={14} className="text-red-400" />
+          <span className="text-xs text-red-300">
+            Удаление: зажмите ЛКМ и обведите область (или кликайте объекты), затем Delete
+            {pendingDeleteCount > 0 ? ` — выбрано ${pendingDeleteCount}` : ''}
+            {pendingDeleteCount > 0 ? ' · Esc — сброс' : ''}
+          </span>
         </div>
       )}
 

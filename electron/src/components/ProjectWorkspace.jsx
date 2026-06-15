@@ -75,6 +75,7 @@ export default function ProjectWorkspace() {
   const [editClassName, setEditClassName] = useState('');
   const editInputRef = useRef(null);
   const [changingAnnId, setChangingAnnId] = useState(null);
+  const [selectedAnnId, setSelectedAnnId] = useState(null);
   const saveRef = useRef(null);
   const selectAnnotationRef = useRef(null);
   const deleteAnnotationRef = useRef(null);
@@ -244,6 +245,8 @@ export default function ProjectWorkspace() {
     if (currentFrame?.id) {
       loadAnnotations(currentFrame.id);
     }
+    setSelectedAnnId(null);
+    setChangingAnnId(null);
   }, [currentFrame?.id]);
 
   // Auto-save: as soon as a frame has any annotation (drawn, SAM2, polygon), it
@@ -667,16 +670,24 @@ export default function ProjectWorkspace() {
                     return (
                       <div key={ann.id || idx} className="relative">
                         <div
-                          className="flex items-center gap-2 p-1.5 rounded bg-slate-700/50 text-xs cursor-pointer hover:bg-slate-600/50 transition"
+                          className={`flex items-center gap-2 p-1.5 rounded text-xs cursor-pointer transition ${
+                            selectedAnnId === ann.id
+                              ? 'bg-blue-600/30 ring-1 ring-blue-500/60'
+                              : 'bg-slate-700/50 hover:bg-slate-600/50'
+                          }`}
                           onClick={() => {
                             setChangingAnnId(changingAnnId === ann.id ? null : ann.id);
+                            // Sticky select: this object stays selected so Delete
+                            // removes it even after the mouse leaves the row.
+                            setSelectedAnnId(ann.id);
                             if (selectAnnotationRef.current) selectAnnotationRef.current(ann.id);
                           }}
                           onMouseEnter={() => {
                             if (selectAnnotationRef.current) selectAnnotationRef.current(ann.id, true);
                           }}
                           onMouseLeave={() => {
-                            if (selectAnnotationRef.current) selectAnnotationRef.current(null);
+                            // Re-assert the sticky selection (don't clear it).
+                            if (selectAnnotationRef.current) selectAnnotationRef.current(selectedAnnId || null);
                           }}
                         >
                           <span
