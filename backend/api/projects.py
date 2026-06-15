@@ -56,6 +56,37 @@ class ClassLabelOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+async def _project_counts(db: AsyncSession, project_id: int) -> dict:
+    """Aggregate counts for a project using SQL COUNT (never loads rows)."""
+    from backend.models.annotation import Frame, OrientedBBox
+    from backend.models.project import VideoFile
+
+    async def count(stmt):
+        return (await db.execute(stmt)).scalar() or 0
+
+    return {
+        "class_count": await count(
+            select(func.count(ClassLabel.id)).where(ClassLabel.project_id == project_id)
+        ),
+        "video_count": await count(
+            select(func.count(VideoFile.id)).where(VideoFile.project_id == project_id)
+        ),
+        "frame_count": await count(
+            select(func.count(Frame.id)).where(Frame.project_id == project_id)
+        ),
+        "labeled_frame_count": await count(
+            select(func.count(Frame.id)).where(
+                Frame.project_id == project_id, Frame.is_labeled == True
+            )
+        ),
+        "annotation_count": await count(
+            select(func.count(OrientedBBox.id))
+            .join(Frame, OrientedBBox.frame_id == Frame.id)
+            .where(Frame.project_id == project_id)
+        ),
+    }
+
+
 @router.post("/", response_model=ProjectOut)
 async def create_project(data: ProjectCreate, db: AsyncSession = Depends(get_db)):
     project = Project(name=data.name, description=data.description, task_type=data.task_type)
@@ -82,29 +113,7 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
 
     out = []
     for p in projects:
-        classes_result = await db.execute(
-            select(ClassLabel).where(ClassLabel.project_id == p.id)
-        )
-        class_count = len(classes_result.scalars().all())
-
-        from backend.models.annotation import Frame, OrientedBBox
-        from backend.models.project import VideoFile
-        frames_result = await db.execute(
-            select(Frame).where(Frame.project_id == p.id)
-        )
-        frames = frames_result.scalars().all()
-        frame_count = len(frames)
-        labeled_frame_count = sum(1 for f in frames if f.is_labeled)
-        annotation_count = (await db.execute(
-            select(func.count(OrientedBBox.id))
-            .join(Frame, OrientedBBox.frame_id == Frame.id)
-            .where(Frame.project_id == p.id)
-        )).scalar() or 0
-        videos_result = await db.execute(
-            select(VideoFile).where(VideoFile.project_id == p.id)
-        )
-        video_count = len(videos_result.scalars().all())
-
+        counts = await _project_counts(db, p.id)
         out.append(ProjectOut(
             id=p.id,
             name=p.name,
@@ -112,11 +121,7 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             task_type=p.task_type or "obb",
             created_at=str(p.created_at) if p.created_at else None,
             updated_at=str(p.updated_at) if p.updated_at else None,
-            class_count=class_count,
-            video_count=video_count,
-            frame_count=frame_count,
-            labeled_frame_count=labeled_frame_count,
-            annotation_count=annotation_count,
+            **counts,
         ))
     return out
 
@@ -127,22 +132,7 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    from backend.models.annotation import Frame, OrientedBBox
-    from backend.models.project import VideoFile
-    classes_result = await db.execute(select(ClassLabel).where(ClassLabel.project_id == project_id))
-    class_count = len(classes_result.scalars().all())
-    frames_result = await db.execute(select(Frame).where(Frame.project_id == project_id))
-    frames = frames_result.scalars().all()
-    frame_count = len(frames)
-    labeled_frame_count = sum(1 for f in frames if f.is_labeled)
-    annotation_count = (await db.execute(
-        select(func.count(OrientedBBox.id))
-        .join(Frame, OrientedBBox.frame_id == Frame.id)
-        .where(Frame.project_id == project_id)
-    )).scalar() or 0
-    videos_result = await db.execute(select(VideoFile).where(VideoFile.project_id == project_id))
-    video_count = len(videos_result.scalars().all())
-
+    counts = await _project_counts(db, project_id)
     return ProjectOut(
         id=project.id,
         name=project.name,
@@ -150,11 +140,7 @@ async def get_project(project_id: int, db: AsyncSession = Depends(get_db)):
         task_type=project.task_type or "obb",
         created_at=str(project.created_at) if project.created_at else None,
         updated_at=str(project.updated_at) if project.updated_at else None,
-        class_count=class_count,
-        video_count=video_count,
-        frame_count=frame_count,
-        labeled_frame_count=labeled_frame_count,
-        annotation_count=annotation_count,
+        **counts,
     )
 
 

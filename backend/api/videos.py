@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from backend.database import get_db
 from backend.config import config
@@ -194,10 +194,9 @@ async def list_video_frames(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    count_result = await db.execute(
-        select(Frame).where(Frame.video_id == video_id)
-    )
-    total = len(count_result.scalars().all())
+    total = (await db.execute(
+        select(func.count(Frame.id)).where(Frame.video_id == video_id)
+    )).scalar() or 0
 
     offset = (page - 1) * page_size
     result = await db.execute(
@@ -240,10 +239,9 @@ async def list_project_frames(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    count_result = await db.execute(
-        select(Frame).where(Frame.project_id == project_id)
-    )
-    total = len(count_result.scalars().all())
+    total = (await db.execute(
+        select(func.count(Frame.id)).where(Frame.project_id == project_id)
+    )).scalar() or 0
 
     offset = (page - 1) * page_size
     result = await db.execute(

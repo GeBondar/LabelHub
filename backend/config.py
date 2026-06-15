@@ -14,7 +14,9 @@ class Config:
     EXPORT_FORMATS: list[str] = [
         "yolov8-obb", "yolov8-detect", "yolov8-seg", "coco", "pascal-voc"
     ]
-    SERVER_HOST: str = "0.0.0.0"
+    # Bind to localhost only — this is a single-user desktop tool whose API can
+    # read/write files and launch training. Never expose it to the network.
+    SERVER_HOST: str = "127.0.0.1"
     SERVER_PORT: int = 8787
 
     @classmethod

@@ -170,10 +170,13 @@ async def import_model(data: ImportRequest, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Не удалось прочитать модель: {e}")
 
-    if task and task != "obb":
+    # The tester renders detect (boxes), segment (masks) and obb (oriented
+    # boxes). Other YOLO tasks (pose/classify) aren't supported here.
+    supported = {"detect", "segment", "obb"}
+    if task and task not in supported:
         raise HTTPException(
             status_code=400,
-            detail=f"Модель имеет тип '{task}', а нужна OBB. Импортируйте YOLO-OBB модель.",
+            detail=f"Модель имеет тип '{task}'. Поддерживаются: detect, segment, obb.",
         )
 
     dst_dir = os.path.join(config.DATA_DIR, "models", "imported")
