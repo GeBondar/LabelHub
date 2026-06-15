@@ -1,145 +1,217 @@
+<div align="center">
+
+<img src="electron/build/icon.png" width="120" alt="LabelHub logo" />
+
 # LabelHub
 
-**Local desktop annotation & training tool for YOLOv8-OBB (Oriented Bounding Boxes)**
+### Annotate · Train · Test — a local-first desktop studio for YOLO datasets and models
 
-LabelHub is a full-stack desktop application that lets you annotate images with rotated bounding boxes, train YOLOv8-OBB models directly from the UI, and export datasets in multiple formats — all running locally on your machine.
+Draw boxes, oriented boxes or polygons (with one-click **SAM2** magic), then train and test
+**Ultralytics YOLO** models — all in one app, all on your machine. No cloud, no accounts, no uploads.
 
-## Features
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
+![Node](https://img.shields.io/badge/Node.js-18+-339933?logo=nodedotjs&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white)
+![YOLO](https://img.shields.io/badge/Ultralytics-YOLO11%20%7C%20YOLOv8-0b5394)
+![Platform](https://img.shields.io/badge/Windows-primary-0078D6?logo=windows&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-42%20passing-2ea44f)
+![License](https://img.shields.io/badge/License-MIT-2ea44f)
 
-- **Project management** — create annotation projects, upload videos, extract frames at configurable FPS
-- **OBB annotation** — draw rotated bounding boxes with heading arrows using a Fabric.js canvas
-- **AI-assisted labeling** — one-click segmentation with Meta SAM2, automatically converted to oriented boxes
-- **In-app training** — train YOLOv8-OBB models directly from labeled data with live metric streaming via WebSocket
-- **Real-time charts** — monitor loss, mAP, precision/recall during training
-- **TensorBoard** — launch TensorBoard from the UI to inspect training runs
-- **Augmentations** — flip, rotate, brightness/contrast, Gaussian noise (OBB-aware)
-- **Multi-format export** — YOLOv8-OBB (polygon), COCO JSON, Pascal VOC XML
-- **Dataset import** — import existing YOLOv8-OBB datasets
+</div>
 
-## Tech Stack
+<p align="center">
+  <img src="screenshots/annotate.jpg" width="850" alt="LabelHub annotation workspace" />
+</p>
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Electron 28, React 18, Fabric.js 5, Recharts, Tailwind CSS, Vite 5 |
-| Backend | FastAPI (Python), Uvicorn, WebSockets |
-| Database | SQLite (SQLAlchemy 2.0 async + aiosqlite) |
-| Computer Vision | OpenCV, Ultralytics YOLOv8-OBB, SAM2 |
-| ML / Augmentation | PyTorch, Albumentations, Shapely |
-| Build | electron-builder, Vite, concurrently |
+---
 
-## Project Structure
+## ✨ Why LabelHub
 
+Most annotation tools stop at labeling. LabelHub takes you from **raw video to a trained, tested model**
+without ever leaving the window:
+
+- 🎯 **Three task types, one tool** — **Detect** (axis-aligned boxes), **OBB** (oriented boxes with a
+  heading arrow) and **Segmentation** (instance polygons). You pick the type when you create a project,
+  and every tool, export and training run adapts to it.
+- 🪄 **SAM2 magic click** — point or drag, and Segment Anything 2 turns it into a precise mask → polygon
+  or box. Loads in the background so the app starts instantly.
+- 🎞️ **Video → frames** — drop in an `.mp4`/`.avi`/`.mov`, pick an FPS, and LabelHub extracts frames ready
+  to label.
+- 🧠 **Train in-app** — launch **YOLOv8** or **YOLO11** (n/s/m/l/x) training with live loss/mAP charts,
+  GPU auto-detection, and a one-click TensorBoard.
+- 🧪 **Live model tester** — run any trained or imported model over a video file or webcam and watch the
+  detections in real time, with an FPS counter and recording.
+- 🔁 **Import & export** — round-trip standard **YOLO** datasets (detect / OBB / seg), including class
+  names from `data.yaml`, plus COCO and Pascal-VOC export.
+- 💾 **Auto-save & fast startup** — your work is saved automatically; heavy libraries (PyTorch, SAM2) warm
+  up in the background so the window opens in ~1.5 s, not 30.
+- 🔒 **Local-first** — a single-user desktop app bound to `127.0.0.1`. Your images never leave your disk.
+
+---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/annotate.jpg" alt="Annotation workspace" /></td>
+    <td width="50%"><img src="screenshots/training.jpg" alt="In-app training with live charts" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Annotate</b> — draw / SAM2, multi-class, auto-save</td>
+    <td align="center"><b>Train</b> — live loss &amp; mAP charts, GPU, TensorBoard</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="screenshots/tester.jpg" alt="Live model tester" /></td>
+    <td width="50%"><img src="screenshots/models.jpg" alt="Model registry" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Test</b> — real-time inference on video / webcam</td>
+    <td align="center"><b>Models</b> — registry of trained &amp; imported models</td>
+  </tr>
+</table>
+
+---
+
+## 🚀 Quick start
+
+> **Prerequisites:** [Python 3.10+](https://www.python.org/downloads/) and
+> [Node.js 18+](https://nodejs.org/) on your `PATH`. A CUDA GPU is optional but makes training and the
+> live tester much faster.
+
+### Windows
+
+```bat
+git clone https://github.com/GeBondar/LabelHub.git
+cd LabelHub
+install.cmd        ::  one-time setup: venv + dependencies + web build
+run.cmd            ::  launch the app
 ```
-LabelHub/
-├── electron/              # Electron + React frontend
-│   ├── main.cjs           # Electron main process (spawns Python backend)
-│   ├── preload.cjs        # Context bridge for IPC
-│   ├── src/               # React application
-│   │   ├── App.jsx
-│   │   ├── api/client.js  # Axios API client + WebSocket manager
-│   │   └── components/    # UI components
-│   ├── build/             # App icons
-│   └── dist/              # Vite production build
-├── backend/               # FastAPI backend
-│   ├── main.py            # App entry point (port 8787)
-│   ├── config.py          # Paths, settings, constants
-│   ├── database.py        # SQLAlchemy async engine & migrations
-│   ├── api/               # REST API routers (projects, videos, annotations, exports, training)
-│   ├── models/            # SQLAlchemy ORM models (Project, Frame, OrientedBBox, TrainingRun)
-│   └── services/          # Business logic
-│       ├── sam2_service.py       # SAM2 segmentation wrapper
-│       ├── training_service.py   # YOLOv8-OBB training orchestration
-│       ├── export_service.py     # Multi-format dataset export
-│       ├── augmentation.py       # OBB-aware augmentations
-│       ├── geometry.py           # OBB corner math
-│       ├── video_processor.py    # FFmpeg frame extraction
-│       └── websocket_manager.py  # Real-time broadcast
-├── models/                # Model checkpoints (SAM2, YOLO)
-├── data/                  # Runtime data (SQLite DB, projects, frames)
-├── elrs_controller.py     # Standalone: ExpressLRS CRSF protocol for RC robot control
-├── inference_video.py     # Standalone: YOLOv8-OBB inference on video
-├── label_pose.py          # Standalone: YOLOv8-pose keypoint labeling tool
-├── vision_research.md     # Research notes on CV algorithms for robot tracking
-└── requirements.txt       # Python deps for standalone scripts
-```
 
-## Getting Started
-
-### Prerequisites
-
-- Python 3.10+ with PyTorch (CUDA recommended)
-- Node.js 18+ and npm
-- FFmpeg (for video processing)
-- [SAM2](https://github.com/facebookresearch/sam2) installed from source (optional, for AI-assisted labeling)
-
-### Backend Setup
+### Linux / macOS
 
 ```bash
-pip install -r backend/requirements.txt
+git clone https://github.com/GeBondar/LabelHub.git
+cd LabelHub
+chmod +x install.sh run.sh
+./install.sh       #  one-time setup
+./run.sh           #  launch the app
+```
 
-# SAM2 (optional, for AI-assisted annotation)
+The first install downloads PyTorch and Ultralytics, so it can take a few minutes. After that the app
+opens in a second or two — the heavy AI libraries finish loading in the background while you work.
+
+---
+
+## 🧭 Usage walkthrough
+
+1. **Create a project** and choose its **task type** — *Detect*, *OBB* or *Segmentation*. This is fixed
+   for the project and drives everything downstream.
+2. **Add images** — upload a video and extract frames at the FPS you want (or import an existing dataset).
+3. **Define classes** — name them and give them colours. The first class is auto-selected, so every new
+   object you draw is labeled immediately.
+4. **Annotate:**
+   - **Draw** — drag a box (Detect/OBB) or click polygon vertices (Segmentation).
+   - **SAM2** — click an object or drag a rough box; SAM2 produces the mask/box for you.
+   - Set the **heading arrow** for OBB, switch classes with number keys, undo/redo, pan & zoom.
+   - Everything **auto-saves** — the frame is marked *labeled* the moment it has an annotation.
+5. **Export** the dataset (YOLO matching your task type, or COCO / Pascal-VOC) with train/val/test split
+   and optional augmentation.
+6. **Train** a YOLOv8 or YOLO11 model in-app — pick the base size, epochs, image size, batch and device.
+   Watch loss and mAP update live; open TensorBoard for the deep dive.
+7. **Test** the model on a video or webcam in the live tester, tweak the confidence threshold, and record
+   the result.
+
+---
+
+## 🧩 Task types & dataset formats
+
+| Task | What you draw | YOLO label line |
+|------|---------------|-----------------|
+| **Detect** | Axis-aligned box | `cls cx cy w h` |
+| **OBB** | Oriented box + heading | `cls x1 y1 x2 y2 x3 y3 x4 y4` |
+| **Segmentation** | Instance polygon | `cls x1 y1 … xn yn` |
+
+Importing a YOLO dataset reads class **names** straight from its `data.yaml` (dict, list or inline form),
+so your classes arrive named — not as `class_0`, `class_1`.
+
+---
+
+## 🧱 Architecture
+
+```
+┌──────────────────────────┐       HTTP / WebSocket        ┌───────────────────────────────┐
+│   Electron + React UI    │  ──────────────────────────►  │  FastAPI backend (127.0.0.1)  │
+│   annotation canvas,     │  ◄──────────────────────────  │  SQLite · local file storage  │
+│   panels, live charts    │                               │  Ultralytics · SAM2 · OpenCV  │
+└──────────────────────────┘                               └───────────────────────────────┘
+```
+
+- **Frontend** — Electron shell + React + Fabric.js canvas + Recharts (`electron/`).
+- **Backend** — FastAPI + SQLAlchemy (async SQLite), Ultralytics YOLO, SAM2, OpenCV, Albumentations
+  (`backend/`). It is launched automatically by the app and bound to localhost only.
+- Heavy imports (PyTorch, Albumentations, SAM2) are **lazy / background-loaded** so startup is fast.
+
+---
+
+## 🪄 Optional: SAM2 (click-to-segment)
+
+SAM2 powers the magic-click annotation. The app works fully without it — the toolbar badge simply shows
+*SAM2 unavailable*. To enable it:
+
+```bash
+# 1. Install SAM2 into the same environment
 git clone https://github.com/facebookresearch/sam2.git
-cd sam2 && pip install -e .
+cd sam2 && pip install -e . && cd ..
+
+# 2. Download the checkpoint and place it at  models/sam2_hiera_large.pt
+#    https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt
 ```
 
-Download the SAM2 checkpoint and place it in `models/`:
+Restart LabelHub; the badge in the annotation toolbar turns green once SAM2 has warmed up.
 
-```
-models/sam2_hiera_large.pt
-```
+## ⚡ Optional: GPU acceleration
 
-### Frontend Setup
+`install.cmd` installs the default PyTorch wheel (CPU). For NVIDIA GPUs, install a CUDA build of PyTorch
+inside the venv (see [pytorch.org](https://pytorch.org/get-started/locally/)). LabelHub auto-detects the
+GPU and shows it in the training panel; training and the live tester then run on CUDA automatically.
+
+---
+
+## 🛠️ Development
 
 ```bash
-cd electron
-npm install
+# Backend tests (fast, ~1s, no torch required)
+pip install -r backend/requirements-dev.txt
+python -m pytest
+
+# Frontend dev server with hot reload (+ auto-started backend)
+cd electron && npm start
 ```
 
-### Running
+The data directory (SQLite DB, frames, exports, training runs) lives in `data/` and is git-ignored.
+Set `LABELHUB_DATA_DIR` to use a different workspace.
 
-```bash
-# Development mode (from electron/ directory)
-npm start
+---
 
-# Production build
-npm run build
-```
+## ❓ FAQ
 
-Electron will automatically spawn the Python backend on port `8787`. The Vite dev server proxies API calls, WebSocket connections, and static file requests to the backend.
+- **Does it upload my images anywhere?** No. Everything runs locally; the backend binds to `127.0.0.1`.
+- **Do I need a GPU?** No — CPU works for annotation and small trainings. A GPU makes training and the
+  live tester dramatically faster.
+- **Is SAM2 required?** No, it's optional. Drawing and polygon tools work without it.
+- **Which models can I train?** YOLOv8 and YOLO11, sizes n/s/m/l/x, for detect / OBB / segmentation.
 
-## Standalone Scripts
+---
 
-The root directory contains three standalone scripts unrelated to the LabelHub GUI:
+## 🤝 Contributing
 
-| Script | Purpose |
-|--------|---------|
-| `elrs_controller.py` | CRSF protocol implementation for ExpressLRS radio control (RC channels + telemetry) |
-| `inference_video.py` | Run a trained YOLOv8-OBB model on a video file with visualization |
-| `label_pose.py` | OpenCV-based keypoint annotation tool for YOLOv8-pose format |
+Issues and pull requests are welcome! Please run `python -m pytest` and `npm run build:web` before
+submitting. For larger changes, open an issue first to discuss the direction.
 
-Install standalone dependencies:
+## 📄 License
 
-```bash
-pip install -r requirements.txt
-```
+[MIT](LICENSE) © George Bondar
 
-## Database
-
-The application uses SQLite (`data/labelhub.db`) with async SQLAlchemy. Tables:
-
-- `projects` — annotation projects
-- `video_files` — uploaded videos
-- `class_labels` — class definitions per project
-- `frames` — extracted frames per video
-- `oriented_bboxes` — annotated oriented bounding boxes (cx, cy, width, height, angle, heading)
-- `training_runs` — training job history with metrics
-
-## Export Formats
-
-- **YOLOv8-OBB** — 8-point normalized polygon per box (class x1 y1 x2 y2 ... x8 y8)
-- **COCO JSON** — standard COCO format with rotated bounding box (cx, cy, w, h, angle)
-- **Pascal VOC XML** — per-image XML with rotated bounding box
-
-## License
-
-MIT
+<div align="center">
+<sub>Built with FastAPI, Electron, React, Ultralytics YOLO and SAM2.</sub>
+</div>
