@@ -12,17 +12,54 @@ import {
 } from 'lucide-react';
 import { useApp } from '../App';
 import apiClient from '../api/client';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'Import dataset': 'Импорт датасета',
+  'Folder browsing is only available in the desktop app. Paste the path manually.':
+    'Обзор папок доступен только в десктоп-приложении. Вставьте путь вручную.',
+  'Preview error': 'Ошибка предпросмотра',
+  'Enter a project name': 'Введите название проекта',
+  'Imported from {format}': 'Импорт из {format}',
+  'Dataset imported': 'Датасет импортирован',
+  'Import error': 'Ошибка импорта',
+  'Labeled dataset type (YOLO)': 'Тип размеченного датасета (YOLO)',
+  'Dataset folder': 'Папка датасета',
+  'Browse': 'Обзор',
+  'Preview': 'Предпросмотр',
+  'Dataset preview': 'Предпросмотр датасета',
+  'Images:': 'Изображений:',
+  'Annotations:': 'Аннотаций:',
+  'Classes:': 'Классов:',
+  'Type:': 'Тип:',
+  'Detected classes:': 'Обнаруженные классы:',
+  'Project name': 'Название проекта',
+  'My imported dataset': 'Мой импортированный датасет',
+  'Import strategy': 'Стратегия импорта',
+  'Append': 'Добавить',
+  'Replace': 'Заменить',
+  "Append imported data to the project's existing data":
+    'Добавить импортируемые данные к существующим в проекте',
+  'Replace all project data with the imported data': 'Заменить все данные проекта импортируемыми',
+  'Import...': 'Импорт...',
+  'Import complete': 'Импорт завершён',
+  'Run import': 'Импортировать',
+  'Oriented boxes (class x1 y1 … x4 y4)': 'Ориентированные боксы (class x1 y1 … x4 y4)',
+  'Plain boxes (class cx cy w h)': 'Обычные боксы (class cx cy w h)',
+  'Instance-segmentation polygons (class x1 y1 … xn yn)': 'Полигоны instance-сегментации (class x1 y1 … xn yn)',
+  'Segmentation': 'Сегментация',
+});
 
 const IMPORT_TASK_TYPES = [
-  { id: 'obb', label: 'OBB', desc: 'Ориентированные боксы (class x1 y1 … x4 y4)' },
-  { id: 'detect', label: 'Detect', desc: 'Обычные боксы (class cx cy w h)' },
-  { id: 'segment', label: 'Сегментация', desc: 'Полигоны instance-сегментации (class x1 y1 … xn yn)' },
+  { id: 'obb', label: 'OBB', desc: 'Oriented boxes (class x1 y1 … x4 y4)' },
+  { id: 'detect', label: 'Detect', desc: 'Plain boxes (class cx cy w h)' },
+  { id: 'segment', label: 'Segmentation', desc: 'Instance-segmentation polygons (class x1 y1 … xn yn)' },
 ];
 
 const TASK_TO_FORMAT = { obb: 'yolov8-obb', detect: 'yolov8-detect', segment: 'yolov8-seg' };
 
 export default function ImportPanel({ onClose, onImported }) {
-  const { addToast, loadProjects } = useApp();
+  const { addToast, loadProjects, t } = useApp();
   const [taskType, setTaskType] = useState('obb');
   const format = TASK_TO_FORMAT[taskType];
   const [importPath, setImportPath] = useState('');
@@ -41,7 +78,7 @@ export default function ImportPanel({ onClose, onImported }) {
 
   const handleBrowse = async () => {
     if (!window.electronAPI) {
-      addToast('Обзор папок доступен только в десктоп-приложении. Вставьте путь вручную.', 'info', 5000);
+      addToast(t('Folder browsing is only available in the desktop app. Paste the path manually.'), 'info', 5000);
       return;
     }
     const path = await window.electronAPI.selectDirectory();
@@ -54,7 +91,7 @@ export default function ImportPanel({ onClose, onImported }) {
 
   const handleFileBrowse = async () => {
     if (!window.electronAPI) {
-      addToast('Обзор папок доступен только в десктоп-приложении. Вставьте путь вручную.', 'info', 5000);
+      addToast(t('Folder browsing is only available in the desktop app. Paste the path manually.'), 'info', 5000);
       return;
     }
     const path = await window.electronAPI.selectDirectory();
@@ -84,7 +121,7 @@ export default function ImportPanel({ onClose, onImported }) {
       }
       setStep2('preview');
     } catch (err) {
-      setError(err.message || 'Ошибка предпросмотра');
+      setError(err.message || t('Preview error'));
     } finally {
       setPreviewLoading(false);
     }
@@ -92,7 +129,7 @@ export default function ImportPanel({ onClose, onImported }) {
 
   const handleImport = async () => {
     if (!projectName.trim()) {
-      setError('Введите название проекта');
+      setError(t('Enter a project name'));
       return;
     }
     setImporting(true);
@@ -102,7 +139,7 @@ export default function ImportPanel({ onClose, onImported }) {
     try {
       const createRes = await apiClient.createProject({
         name: projectName.trim(),
-        description: `Импорт из ${format.toUpperCase()}`,
+        description: t('Imported from {format}', { format: format.toUpperCase() }),
         task_type: taskType,
       });
       const newProjectId = createRes.data.id;
@@ -116,13 +153,13 @@ export default function ImportPanel({ onClose, onImported }) {
 
       setProgress(100);
       setDone(true);
-      addToast('Датасет импортирован', 'success');
+      addToast(t('Dataset imported'), 'success');
       setTimeout(() => {
         onImported && onImported();
         onClose();
       }, 1500);
     } catch (err) {
-      setError(err.message || 'Ошибка импорта');
+      setError(err.message || t('Import error'));
     } finally {
       setImporting(false);
     }
@@ -134,7 +171,7 @@ export default function ImportPanel({ onClose, onImported }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Upload size={20} className="text-blue-400" />
-            Импорт датасета
+            {t('Import dataset')}
           </h2>
           <button className="p-1 hover:bg-slate-700 rounded-lg transition" onClick={onClose}>
             <X size={18} />
@@ -143,32 +180,32 @@ export default function ImportPanel({ onClose, onImported }) {
 
         {/* Task type of the imported dataset (matches project types). */}
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-2 font-medium">Тип размеченного датасета (YOLO)</label>
+          <label className="block text-sm text-slate-400 mb-2 font-medium">{t('Labeled dataset type (YOLO)')}</label>
           <div className="flex gap-2">
-            {IMPORT_TASK_TYPES.map((t) => (
+            {IMPORT_TASK_TYPES.map((opt) => (
               <button
-                key={t.id}
+                key={opt.id}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                  taskType === t.id
+                  taskType === opt.id
                     ? 'bg-blue-600 text-white'
                     : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
-                onClick={() => { setTaskType(t.id); setImportPath(''); setPreview(null); }}
-                title={t.desc}
+                onClick={() => { setTaskType(opt.id); setImportPath(''); setPreview(null); }}
+                title={t(opt.desc)}
               >
-                {t.label}
+                {t(opt.label)}
               </button>
             ))}
           </div>
           <p className="text-[10px] text-slate-500 mt-1">
-            {IMPORT_TASK_TYPES.find((t) => t.id === taskType)?.desc}
+            {t(IMPORT_TASK_TYPES.find((opt) => opt.id === taskType)?.desc)}
           </p>
         </div>
 
         {/* Path Select */}
         <div className="mb-4">
           <label className="block text-sm text-slate-400 mb-1 font-medium">
-            Папка датасета
+            {t('Dataset folder')}
           </label>
           <div className="flex gap-2">
             <input
@@ -179,7 +216,7 @@ export default function ImportPanel({ onClose, onImported }) {
             />
             <button className="btn-secondary flex items-center gap-1" onClick={handleFileBrowse}>
               <FolderOpen size={14} />
-              Обзор
+              {t('Browse')}
             </button>
           </div>
           <button
@@ -188,37 +225,37 @@ export default function ImportPanel({ onClose, onImported }) {
             disabled={!importPath || previewLoading}
           >
             {previewLoading ? <Loader2 size={14} className="loading-spinner" /> : <Info size={14} />}
-            Предпросмотр
+            {t('Preview')}
           </button>
         </div>
 
         {/* Preview */}
         {preview && (
           <div className="mb-4 p-3 bg-slate-700/30 border border-slate-600 rounded-lg">
-            <h3 className="text-sm font-medium text-slate-300 mb-2">Предпросмотр датасета</h3>
+            <h3 className="text-sm font-medium text-slate-300 mb-2">{t('Dataset preview')}</h3>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-400">Изображений:</span>
+                <span className="text-slate-400">{t('Images:')}</span>
                 <span className="text-slate-200">{preview.image_count || preview.total_images || '?'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Аннотаций:</span>
+                <span className="text-slate-400">{t('Annotations:')}</span>
                 <span className="text-slate-200">{preview.annotation_count || preview.total_annotations || '?'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Классов:</span>
+                <span className="text-slate-400">{t('Classes:')}</span>
                 <span className="text-slate-200">{preview.class_count || (preview.classes?.length || '?')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Тип:</span>
+                <span className="text-slate-400">{t('Type:')}</span>
                 <span className="text-slate-200">
-                  {IMPORT_TASK_TYPES.find((t) => t.id === taskType)?.label} · {format}
+                  {t(IMPORT_TASK_TYPES.find((opt) => opt.id === taskType)?.label)} · {format}
                 </span>
               </div>
             </div>
             {preview.classes && preview.classes.length > 0 && (
               <div className="mt-2">
-                <p className="text-[10px] text-slate-500 mb-1">Обнаруженные классы:</p>
+                <p className="text-[10px] text-slate-500 mb-1">{t('Detected classes:')}</p>
                 <div className="flex flex-wrap gap-1">
                   {preview.classes.map((cls) => (
                     <span key={cls} className="px-2 py-0.5 bg-slate-600 rounded text-[10px] text-slate-300">
@@ -233,22 +270,22 @@ export default function ImportPanel({ onClose, onImported }) {
 
         {/* Project Name */}
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-1 font-medium">Название проекта</label>
+          <label className="block text-sm text-slate-400 mb-1 font-medium">{t('Project name')}</label>
           <input
             className="input-field"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
-            placeholder="Мой импортированный датасет"
+            placeholder={t('My imported dataset')}
           />
         </div>
 
         {/* Merge Strategy */}
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-2 font-medium">Стратегия импорта</label>
+          <label className="block text-sm text-slate-400 mb-2 font-medium">{t('Import strategy')}</label>
           <div className="flex gap-2">
             {[
-              { id: 'append', label: 'Добавить' },
-              { id: 'replace', label: 'Заменить' },
+              { id: 'append', label: t('Append') },
+              { id: 'replace', label: t('Replace') },
             ].map((s) => (
               <button
                 key={s.id}
@@ -265,8 +302,8 @@ export default function ImportPanel({ onClose, onImported }) {
           </div>
           <p className="text-[10px] text-slate-500 mt-1">
             {mergeStrategy === 'append'
-              ? 'Добавить импортируемые данные к существующим в проекте'
-              : 'Заменить все данные проекта импортируемыми'}
+              ? t("Append imported data to the project's existing data")
+              : t('Replace all project data with the imported data')}
           </p>
         </div>
 
@@ -274,7 +311,7 @@ export default function ImportPanel({ onClose, onImported }) {
         {(importing || done) && (
           <div className="mb-4">
             <div className="flex justify-between text-xs text-slate-400 mb-1">
-              <span>{importing ? (step || 'Импорт...') : 'Импорт завершён'}</span>
+              <span>{importing ? (step || t('Import...')) : t('Import complete')}</span>
               <span>{progress}%</span>
             </div>
             <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
@@ -294,7 +331,7 @@ export default function ImportPanel({ onClose, onImported }) {
 
         <div className="flex justify-end gap-3">
           <button className="btn-secondary" onClick={onClose} disabled={importing}>
-            Отмена
+            {t('Cancel')}
           </button>
           <button
             className="btn-primary flex items-center gap-2"
@@ -306,7 +343,7 @@ export default function ImportPanel({ onClose, onImported }) {
             ) : (
               <Upload size={16} />
             )}
-            {done ? 'Готово' : 'Импортировать'}
+            {done ? t('Done') : t('Run import')}
           </button>
         </div>
       </div>
