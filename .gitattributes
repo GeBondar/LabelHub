@@ -1,0 +1,18 @@
+# Keep shell scripts LF so they run on Linux/macOS regardless of checkout OS.
+*.sh    text eol=lf
+# Windows batch files want CRLF.
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+# Normalize common text types; let git pick line endings otherwise.
+*.py    text
+*.js    text
+*.jsx   text
+*.json  text
+*.md    text
+*.html  text
+*.css   text
+# Treat these as binary (never normalize / diff).
+*.pt    binary
+*.ico   binary
+*.png   binary
+*.jpg   binary
