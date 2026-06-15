@@ -19,6 +19,63 @@ import {
 import { useApp } from '../App';
 import apiClient from '../api/client';
 import SAM2Tools from './SAM2Tools';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'SAM2 loading…': 'SAM2 загружается…',
+  'SAM2 ready': 'SAM2 готов',
+  'SAM2 unavailable': 'SAM2 недоступен',
+  'SAM2…': 'SAM2…',
+  'Polygon draft cancelled': 'Черновик полигона отменён',
+  'Class {id}': 'Класс {id}',
+  'A polygon needs at least 3 points': 'Нужно минимум 3 точки для полигона',
+  'Select a class before annotating': 'Выберите класс перед разметкой',
+  'Polygon created': 'Полигон создан',
+  'Failed to create the polygon': 'Ошибка создания полигона',
+  'Unknown': 'Неизвестно',
+  'Select a class before drawing': 'Выберите класс перед рисованием',
+  'Annotation created': 'Аннотация создана',
+  'Failed to create the annotation': 'Ошибка создания аннотации',
+  'Could not find the annotation': 'Не удалось найти аннотацию',
+  'Annotation deleted': 'Аннотация удалена',
+  'Failed to delete the annotation': 'Ошибка удаления аннотации',
+  'Objects deleted: {n}': 'Удалено объектов: {n}',
+  'Select a class before using SAM2': 'Выберите класс перед использованием SAM2',
+  'SAM2 segmentation done': 'SAM2 сегментация выполнена',
+  'Unknown error': 'Неизвестная ошибка',
+  'SAM2 unavailable: {msg}': 'SAM2 недоступен: {msg}',
+  'Nothing to undo': 'Нечего отменять',
+  'Undone': 'Отменено',
+  'Nothing to redo': 'Нечего повторить',
+  'Redone': 'Повторено',
+  'Annotation confirmed': 'Аннотация подтверждена',
+  'Confirmation error': 'Ошибка подтверждения',
+  'Class changed to: {name}': 'Класс изменён на: {name}',
+  'Class change error': 'Ошибка изменения класса',
+  'Select a box (Edit mode)': 'Выделите бокс (режим «Редактировать»)',
+  'No active frame': 'Нет активного кадра',
+  'Cancel SAM': 'Отмена SAM',
+  'Object direction: click as many times as needed, the outline does not move (F)':
+    'Направление объекта: жмите сколько нужно, обводка не двигается (F)',
+  'Direction': 'Направление',
+  'Polygon: click — point, double-click / Enter — close': 'Полигон: клик — точка, двойной клик / Enter — замкнуть',
+  'Cancel the unfinished polygon (Esc / Delete)': 'Отменить незавершённый полигон (Esc / Delete)',
+  'Cancel polygon ({n})': 'Отменить полигон ({n})',
+  'Zoom out': 'Уменьшить',
+  'Zoom in': 'Увеличить',
+  'Fit': 'По размеру',
+  'SAM2 is processing...': 'SAM2 обрабатывает...',
+  'SAM2 Click: click an object to segment it': 'SAM2 Click: нажмите на объект для сегментации',
+  'SAM2 Box: draw a box around the object': 'SAM2 Box: обведите объект рамкой',
+  'Delete mode: hold LMB and drag over an area (or click objects), then Delete':
+    'Удаление: зажмите ЛКМ и обведите область (или кликайте объекты), затем Delete',
+  ' — {n} selected': ' — выбрано {n}',
+  ' · Esc — reset': ' · Esc — сброс',
+  'Image load error': 'Ошибка загрузки изображения',
+  'Annotation: {name}': 'Аннотация: {name}',
+  'Change class': 'Сменить класс',
+  'Confirm': 'Подтвердить',
+});
 
 const MODES = {
   DRAW: 'draw',
@@ -117,13 +174,13 @@ function obbToAabbNorm(cx, cy, w, h, angleDeg, imgW, imgH) {
 
 // SAM2 load-state badge for the canvas toolbar. `status` is the /sam2/status
 // payload: { state: idle|loading|loaded|error, error }.
-function renderSamBadge(status) {
+function renderSamBadge(status, t) {
   const state = status?.state || 'unknown';
   const cfg = {
-    loading: { Icon: Loader2, cls: 'text-amber-300 bg-amber-900/20 border-amber-700/40', text: 'SAM2 загружается…', spin: true },
-    loaded: { Icon: CheckCircle2, cls: 'text-green-300 bg-green-900/20 border-green-700/40', text: 'SAM2 готов' },
-    error: { Icon: AlertCircle, cls: 'text-red-300 bg-red-900/20 border-red-700/40', text: 'SAM2 недоступен' },
-  }[state] || { Icon: Loader2, cls: 'text-slate-400 bg-slate-700/40 border-slate-600/40', text: 'SAM2…', spin: true };
+    loading: { Icon: Loader2, cls: 'text-amber-300 bg-amber-900/20 border-amber-700/40', text: t('SAM2 loading…'), spin: true },
+    loaded: { Icon: CheckCircle2, cls: 'text-green-300 bg-green-900/20 border-green-700/40', text: t('SAM2 ready') },
+    error: { Icon: AlertCircle, cls: 'text-red-300 bg-red-900/20 border-red-700/40', text: t('SAM2 unavailable') },
+  }[state] || { Icon: Loader2, cls: 'text-slate-400 bg-slate-700/40 border-slate-600/40', text: t('SAM2…'), spin: true };
   const { Icon, cls, text, spin } = cfg;
   const title = state === 'error' && status?.error ? status.error : text;
   return (
@@ -199,7 +256,7 @@ export default function AnnotationCanvas({
   const pendingDeleteRef = useRef(new Set());
   const [pendingDeleteCount, setPendingDeleteCount] = useState(0);
   const [polyPointCount, setPolyPointCount] = useState(0);  // in-progress segment draft
-  const { addToast, annotations: allAnnotations, updateAnnotationLocal, removeAnnotationLocal, setAnnotationsForFrame } = useApp();
+  const { addToast, annotations: allAnnotations, updateAnnotationLocal, removeAnnotationLocal, setAnnotationsForFrame, t } = useApp();
 
   const currentAnnotations = frame ? (allAnnotations[frame.id] || annotations) : [];
 
@@ -258,7 +315,7 @@ export default function AnnotationCanvas({
       // 0) An unfinished polygon draft (the dashed lines): Delete abandons it.
       if (polyPointsRef.current.length > 0) {
         clearPolygonDraft();
-        addToast('Черновик полигона отменён', 'info', 1500);
+        addToast(t('Polygon draft cancelled'), 'info', 1500);
         return true;
       }
       // 1) Region-delete: a marquee in DELETE mode marked several objects.
@@ -605,7 +662,7 @@ export default function AnnotationCanvas({
 
     const cls = classes.find((c) => c.id === ann.class_id);
     const color = cls?.color || '#3b82f6';
-    const label = cls?.name || `Класс ${ann.class_id}`;
+    const label = cls?.name || t('Class {id}', { id: ann.class_id });
 
     const rawAngle = ann.angle || 0;
     // Detect boxes are axis-aligned: if a stored annotation carries an angle
@@ -696,7 +753,7 @@ export default function AnnotationCanvas({
   function drawPolygonAnnotation(canvas, ann) {
     const cls = classes.find((c) => c.id === ann.class_id);
     const color = cls?.color || '#3b82f6';
-    const label = cls?.name || `Класс ${ann.class_id}`;
+    const label = cls?.name || t('Class {id}', { id: ann.class_id });
 
     const scenePoints = ann.points.map(([nx, ny]) => {
       const { x, y } = canvasFromNormalized(nx, ny);
@@ -818,11 +875,11 @@ export default function AnnotationCanvas({
     const selectedClassId = selectedClassIdRef.current;
     const pts = polyPointsRef.current;
     if (pts.length < 3) {
-      addToast('Нужно минимум 3 точки для полигона', 'warning', 2000);
+      addToast(t('A polygon needs at least 3 points'), 'warning', 2000);
       return;
     }
     if (!selectedClassId) {
-      addToast('Выберите класс перед разметкой', 'warning');
+      addToast(t('Select a class before annotating'), 'warning');
       return;
     }
     const normPoints = pts.map((p) => {
@@ -848,9 +905,9 @@ export default function AnnotationCanvas({
       updateAnnotationLocal(frame.id, newAnn);
       drawAnnotation(canvas, newAnn);
       canvas.renderAll();
-      addToast('Полигон создан', 'success', 2000);
+      addToast(t('Polygon created'), 'success', 2000);
     } catch (e) {
-      addToast('Ошибка создания полигона', 'error');
+      addToast(t('Failed to create the polygon'), 'error');
     }
   }
 
@@ -994,7 +1051,7 @@ export default function AnnotationCanvas({
           y: evt.clientY,
           annotationId: data?.id,
           classId: data?.class_id,
-          className: cls?.name || 'Неизвестно',
+          className: cls?.name || t('Unknown'),
           target: target,
         });
         evt.preventDefault();
@@ -1180,7 +1237,7 @@ export default function AnnotationCanvas({
   async function createAnnotation(drawRect) {
     const selectedClassId = selectedClassIdRef.current;
     if (!frame || !selectedClassId) {
-      addToast('Выберите класс перед рисованием', 'warning');
+      addToast(t('Select a class before drawing'), 'warning');
       return;
     }
 
@@ -1213,16 +1270,16 @@ export default function AnnotationCanvas({
       updateAnnotationLocal(frame.id, newAnn);
       drawAnnotation(canvas, newAnn);
       canvas.renderAll();
-      addToast('Аннотация создана', 'success', 2000);
+      addToast(t('Annotation created'), 'success', 2000);
     } catch (e) {
-      addToast('Ошибка создания аннотации', 'error');
+      addToast(t('Failed to create the annotation'), 'error');
     }
   }
 
   async function deleteAnnotation(obj) {
     const data = getAnnotationFromObject(obj);
     if (!data || !data.id) {
-      addToast('Не удалось найти аннотацию', 'error');
+      addToast(t('Could not find the annotation'), 'error');
       return;
     }
 
@@ -1239,9 +1296,9 @@ export default function AnnotationCanvas({
       removeAnnotationLocal(frame.id, data.id);
       canvas.discardActiveObject();
       canvas.renderAll();
-      addToast('Аннотация удалена', 'success', 2000);
+      addToast(t('Annotation deleted'), 'success', 2000);
     } catch (e) {
-      addToast('Ошибка удаления аннотации', 'error');
+      addToast(t('Failed to delete the annotation'), 'error');
     }
   }
 
@@ -1333,7 +1390,7 @@ export default function AnnotationCanvas({
     setPendingDeleteCount(pendingDeleteRef.current.size);
     canvas.discardActiveObject();
     canvas.renderAll();
-    addToast(`Удалено объектов: ${ids.length}`, 'success', 2000);
+    addToast(t('Objects deleted: {n}', { n: ids.length }), 'success', 2000);
   }
 
   // Build the create payload from a SAM2 response per task type. Segment stores
@@ -1364,7 +1421,7 @@ export default function AnnotationCanvas({
     const selectedClassId = selectedClassIdRef.current;
     if (!frame) return;
     if (!selectedClassId) {
-      addToast('Выберите класс перед использованием SAM2', 'warning');
+      addToast(t('Select a class before using SAM2'), 'warning');
       return;
     }
     const pointer = canvas.getPointer(opt.e);
@@ -1389,10 +1446,10 @@ export default function AnnotationCanvas({
       const updatedAnns = (allAnnotations[frame.id] || annotations).concat(newAnn);
       updatedAnns.forEach((ann) => drawAnnotation(canvas, ann));
       canvas.renderAll();
-      addToast('SAM2 сегментация выполнена', 'success');
+      addToast(t('SAM2 segmentation done'), 'success');
     } catch (e) {
-      const msg = e?.response?.data?.detail || e.message || 'Неизвестная ошибка';
-      addToast('SAM2 недоступен: ' + msg, 'error', 6000);
+      const msg = e?.response?.data?.detail || e.message || t('Unknown error');
+      addToast(t('SAM2 unavailable: {msg}', { msg }), 'error', 6000);
     } finally {
       setSamLoading(false);
     }
@@ -1402,7 +1459,7 @@ export default function AnnotationCanvas({
     const selectedClassId = selectedClassIdRef.current;
     if (!frame) return;
     if (!selectedClassId) {
-      addToast('Выберите класс перед использованием SAM2', 'warning');
+      addToast(t('Select a class before using SAM2'), 'warning');
       return;
     }
     setSamLoading(true);
@@ -1430,10 +1487,10 @@ export default function AnnotationCanvas({
       const updatedAnns = (allAnnotations[frame.id] || annotations).concat(newAnn);
       updatedAnns.forEach((ann) => drawAnnotation(canvas, ann));
       canvas.renderAll();
-      addToast('SAM2 сегментация выполнена', 'success');
+      addToast(t('SAM2 segmentation done'), 'success');
     } catch (e) {
-      const msg = e?.response?.data?.detail || e.message || 'Неизвестная ошибка';
-      addToast('SAM2 недоступен: ' + msg, 'error', 6000);
+      const msg = e?.response?.data?.detail || e.message || t('Unknown error');
+      addToast(t('SAM2 unavailable: {msg}', { msg }), 'error', 6000);
     } finally {
       setSamLoading(false);
     }
@@ -1549,26 +1606,26 @@ export default function AnnotationCanvas({
 
   async function handleUndo() {
     if (!frame || undoStackRef.current.length === 0) {
-      addToast('Нечего отменять', 'info', 1500);
+      addToast(t('Nothing to undo'), 'info', 1500);
       return;
     }
     const prev = undoStackRef.current.pop();
     const current = allAnnotations[frame.id] || [];
     redoStackRef.current.push(JSON.parse(JSON.stringify(current)));
     await applySnapshot(prev);
-    addToast('Отменено', 'success', 1500);
+    addToast(t('Undone'), 'success', 1500);
   }
 
   async function handleRedo() {
     if (!frame || redoStackRef.current.length === 0) {
-      addToast('Нечего повторить', 'info', 1500);
+      addToast(t('Nothing to redo'), 'info', 1500);
       return;
     }
     const next = redoStackRef.current.pop();
     const current = allAnnotations[frame.id] || [];
     undoStackRef.current.push(JSON.parse(JSON.stringify(current)));
     await applySnapshot(next);
-    addToast('Повторено', 'success', 1500);
+    addToast(t('Redone'), 'success', 1500);
   }
 
   function handleKeyDown(e) {
@@ -1626,9 +1683,9 @@ export default function AnnotationCanvas({
         break;
       case 'verify':
         apiClient.updateAnnotation(contextMenu.annotationId, { is_verified: true }).then(() => {
-          addToast('Аннотация подтверждена', 'success');
+          addToast(t('Annotation confirmed'), 'success');
         }).catch(() => {
-          addToast('Ошибка подтверждения', 'error');
+          addToast(t('Confirmation error'), 'error');
         });
         break;
       default:
@@ -1653,9 +1710,9 @@ export default function AnnotationCanvas({
         updatedAnns.forEach((ann) => drawAnnotation(fabricRef.current, ann));
         fabricRef.current.renderAll();
       }
-      addToast(`Класс изменён на: ${cls?.name || newClassId}`, 'success');
+      addToast(t('Class changed to: {name}', { name: cls?.name || newClassId }), 'success');
     }).catch(() => {
-      addToast('Ошибка изменения класса', 'error');
+      addToast(t('Class change error'), 'error');
     });
     setContextMenu(null);
   }
@@ -1669,7 +1726,7 @@ export default function AnnotationCanvas({
     if (!canvas) return null;
     const active = canvas.getActiveObject();
     if (!active || !active.annotationData) {
-      addToast('Выделите бокс (режим «Редактировать»)', 'info', 2000);
+      addToast(t('Select a box (Edit mode)'), 'info', 2000);
       return null;
     }
     return active;
@@ -1700,7 +1757,7 @@ export default function AnnotationCanvas({
   if (!frame) {
     return (
       <div className="h-full flex items-center justify-center text-slate-500">
-        <p>Нет активного кадра</p>
+        <p>{t('No active frame')}</p>
       </div>
     );
   }
@@ -1731,13 +1788,13 @@ export default function AnnotationCanvas({
 
         {(canvasMode === MODES.SAM_CLICK || canvasMode === MODES.SAM_BOX) && (
           <button className="tool-btn text-yellow-400" onClick={handleSamCancel}>
-            Отмена SAM
+            {t('Cancel SAM')}
           </button>
         )}
 
         {/* SAM2 load-state badge — shows whether the model is still warming up
             in the background, ready, or unavailable. */}
-        {renderSamBadge(samStatus)}
+        {renderSamBadge(samStatus, t)}
 
         {isObb && <div className="h-5 w-px bg-slate-700 mx-1" />}
 
@@ -1748,26 +1805,26 @@ export default function AnnotationCanvas({
           <button
             className="tool-btn"
             onClick={() => rotateHeading(90)}
-            title="Направление объекта: жмите сколько нужно, обводка не двигается (F)"
+            title={t('Object direction: click as many times as needed, the outline does not move (F)')}
           >
             <Navigation size={16} className="text-emerald-400" />
-            <span className="hidden lg:inline text-xs ml-1">Направление</span>
+            <span className="hidden lg:inline text-xs ml-1">{t('Direction')}</span>
           </button>
         )}
 
         {isSegment && polyPointCount === 0 && (
           <span className="text-xs text-slate-400 ml-2 hidden lg:inline">
-            Полигон: клик — точка, двойной клик / Enter — замкнуть
+            {t('Polygon: click — point, double-click / Enter — close')}
           </span>
         )}
         {isSegment && polyPointCount > 0 && (
           <button
             className="tool-btn text-red-300 hover:text-red-200 ml-1"
             onClick={() => clearPolygonDraft()}
-            title="Отменить незавершённый полигон (Esc / Delete)"
+            title={t('Cancel the unfinished polygon (Esc / Delete)')}
           >
             <Trash2 size={14} />
-            <span className="text-xs ml-1">Отменить полигон ({polyPointCount})</span>
+            <span className="text-xs ml-1">{t('Cancel polygon ({n})', { n: polyPointCount })}</span>
           </button>
         )}
 
@@ -1777,13 +1834,13 @@ export default function AnnotationCanvas({
           {Math.round(zoom * 100)}%
         </span>
 
-        <button className="tool-btn" onClick={handleZoomOut} title="Уменьшить">
+        <button className="tool-btn" onClick={handleZoomOut} title={t('Zoom out')}>
           <ZoomOut size={16} />
         </button>
-        <button className="tool-btn" onClick={handleZoomIn} title="Увеличить">
+        <button className="tool-btn" onClick={handleZoomIn} title={t('Zoom in')}>
           <ZoomIn size={16} />
         </button>
-        <button className="tool-btn" onClick={handleZoomFit} title="По размеру">
+        <button className="tool-btn" onClick={handleZoomFit} title={t('Fit')}>
           <RotateCcw size={16} />
         </button>
       </div>
@@ -1792,21 +1849,21 @@ export default function AnnotationCanvas({
       {samLoading && (
         <div className="h-7 bg-blue-900/30 border-b border-blue-700/30 flex items-center px-3 gap-2 flex-shrink-0">
           <Loader2 size={14} className="loading-spinner text-blue-400" />
-          <span className="text-xs text-blue-300">SAM2 обрабатывает...</span>
+          <span className="text-xs text-blue-300">{t('SAM2 is processing...')}</span>
         </div>
       )}
 
       {canvasMode === MODES.SAM_CLICK && !samLoading && (
         <div className="h-7 bg-purple-900/30 border-b border-purple-700/30 flex items-center px-3 gap-2 flex-shrink-0">
           <Crosshair size={14} className="text-purple-400" />
-          <span className="text-xs text-purple-300">SAM2 Click: нажмите на объект для сегментации</span>
+          <span className="text-xs text-purple-300">{t('SAM2 Click: click an object to segment it')}</span>
         </div>
       )}
 
       {canvasMode === MODES.SAM_BOX && !samLoading && (
         <div className="h-7 bg-purple-900/30 border-b border-purple-700/30 flex items-center px-3 gap-2 flex-shrink-0">
           <Square size={14} className="text-purple-400" />
-          <span className="text-xs text-purple-300">SAM2 Box: обведите объект рамкой</span>
+          <span className="text-xs text-purple-300">{t('SAM2 Box: draw a box around the object')}</span>
         </div>
       )}
 
@@ -1814,9 +1871,9 @@ export default function AnnotationCanvas({
         <div className="h-7 bg-red-900/30 border-b border-red-700/30 flex items-center px-3 gap-2 flex-shrink-0">
           <Trash2 size={14} className="text-red-400" />
           <span className="text-xs text-red-300">
-            Удаление: зажмите ЛКМ и обведите область (или кликайте объекты), затем Delete
-            {pendingDeleteCount > 0 ? ` — выбрано ${pendingDeleteCount}` : ''}
-            {pendingDeleteCount > 0 ? ' · Esc — сброс' : ''}
+            {t('Delete mode: hold LMB and drag over an area (or click objects), then Delete')}
+            {pendingDeleteCount > 0 ? t(' — {n} selected', { n: pendingDeleteCount }) : ''}
+            {pendingDeleteCount > 0 ? t(' · Esc — reset') : ''}
           </span>
         </div>
       )}
@@ -1830,7 +1887,7 @@ export default function AnnotationCanvas({
         )}
         {imgError && (
           <div className="absolute inset-0 flex items-center justify-center text-slate-500 z-20">
-            <p>Ошибка загрузки изображения</p>
+            <p>{t('Image load error')}</p>
           </div>
         )}
       </div>
@@ -1844,10 +1901,10 @@ export default function AnnotationCanvas({
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             <div className="px-3 py-1.5 text-xs text-slate-400 border-b border-slate-700">
-              Аннотация: {contextMenu.className}
+              {t('Annotation: {name}', { name: contextMenu.className })}
             </div>
             <div className="px-1 py-1 border-b border-slate-700">
-              <p className="px-2 py-0.5 text-[10px] text-slate-500 uppercase">Сменить класс</p>
+              <p className="px-2 py-0.5 text-[10px] text-slate-500 uppercase">{t('Change class')}</p>
               <div className="max-h-32 overflow-y-auto">
                 {classes.map((cls) => (
                   <button
@@ -1867,13 +1924,13 @@ export default function AnnotationCanvas({
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700 transition"
               onClick={() => handleContextAction('verify')}
             >
-              <CheckCircle2 size={14} /> Подтвердить
+              <CheckCircle2 size={14} /> {t('Confirm')}
             </button>
             <button
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 transition"
               onClick={() => handleContextAction('delete')}
             >
-              <Trash2 size={14} /> Удалить
+              <Trash2 size={14} /> {t('Delete')}
             </button>
           </div>
         </>
