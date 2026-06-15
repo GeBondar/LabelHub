@@ -13,9 +13,18 @@ import {
 import { useApp } from '../App';
 import apiClient from '../api/client';
 
+const IMPORT_TASK_TYPES = [
+  { id: 'obb', label: 'OBB', desc: 'Ориентированные боксы (class x1 y1 … x4 y4)' },
+  { id: 'detect', label: 'Detect', desc: 'Обычные боксы (class cx cy w h)' },
+  { id: 'segment', label: 'Сегментация', desc: 'Полигоны instance-сегментации (class x1 y1 … xn yn)' },
+];
+
+const TASK_TO_FORMAT = { obb: 'yolov8-obb', detect: 'yolov8-detect', segment: 'yolov8-seg' };
+
 export default function ImportPanel({ onClose, onImported }) {
   const { addToast, loadProjects } = useApp();
-  const [format, setFormat] = useState('yolov8-obb');
+  const [taskType, setTaskType] = useState('obb');
+  const format = TASK_TO_FORMAT[taskType];
   const [importPath, setImportPath] = useState('');
   const [projectId, setProjectId] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -48,9 +57,7 @@ export default function ImportPanel({ onClose, onImported }) {
       addToast('Обзор папок доступен только в десктоп-приложении. Вставьте путь вручную.', 'info', 5000);
       return;
     }
-    const path = format === 'coco'
-      ? await window.electronAPI.selectImageFile()
-      : await window.electronAPI.selectDirectory();
+    const path = await window.electronAPI.selectDirectory();
     if (path) {
       setImportPath(path);
       setError('');
@@ -96,6 +103,7 @@ export default function ImportPanel({ onClose, onImported }) {
       const createRes = await apiClient.createProject({
         name: projectName.trim(),
         description: `Импорт из ${format.toUpperCase()}`,
+        task_type: taskType,
       });
       const newProjectId = createRes.data.id;
 
@@ -133,42 +141,41 @@ export default function ImportPanel({ onClose, onImported }) {
           </button>
         </div>
 
-        {/* Format Select */}
+        {/* Task type of the imported dataset (matches project types). */}
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-2 font-medium">Формат датасета</label>
+          <label className="block text-sm text-slate-400 mb-2 font-medium">Тип размеченного датасета (YOLO)</label>
           <div className="flex gap-2">
-            {[
-              { id: 'yolov8-obb', label: 'YOLOv8-OBB' },
-              { id: 'coco', label: 'COCO' },
-            ].map((f) => (
+            {IMPORT_TASK_TYPES.map((t) => (
               <button
-                key={f.id}
+                key={t.id}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                  format === f.id
+                  taskType === t.id
                     ? 'bg-blue-600 text-white'
                     : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
-                onClick={() => { setFormat(f.id); setImportPath(''); setPreview(null); }}
+                onClick={() => { setTaskType(t.id); setImportPath(''); setPreview(null); }}
+                title={t.desc}
               >
-                {f.label}
+                {t.label}
               </button>
             ))}
           </div>
+          <p className="text-[10px] text-slate-500 mt-1">
+            {IMPORT_TASK_TYPES.find((t) => t.id === taskType)?.desc}
+          </p>
         </div>
 
         {/* Path Select */}
         <div className="mb-4">
           <label className="block text-sm text-slate-400 mb-1 font-medium">
-            {format === 'yolov8-obb' ? 'Папка датасета' : 'Файл аннотаций'}
+            Папка датасета
           </label>
           <div className="flex gap-2">
             <input
               className="input-field flex-1"
               value={importPath}
               onChange={(e) => setImportPath(e.target.value)}
-              placeholder={format === 'yolov8-obb'
-                ? 'C:\\datasets\\my_dataset'
-                : 'C:\\datasets\\annotations.json'}
+              placeholder="C:\\datasets\\my_dataset"
             />
             <button className="btn-secondary flex items-center gap-1" onClick={handleFileBrowse}>
               <FolderOpen size={14} />
@@ -203,8 +210,10 @@ export default function ImportPanel({ onClose, onImported }) {
                 <span className="text-slate-200">{preview.class_count || (preview.classes?.length || '?')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Формат:</span>
-                <span className="text-slate-200">{format.toUpperCase()}</span>
+                <span className="text-slate-400">Тип:</span>
+                <span className="text-slate-200">
+                  {IMPORT_TASK_TYPES.find((t) => t.id === taskType)?.label} · {format}
+                </span>
               </div>
             </div>
             {preview.classes && preview.classes.length > 0 && (

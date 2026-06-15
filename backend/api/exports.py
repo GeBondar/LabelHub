@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -285,10 +286,70 @@ async def import_from_dir(project_id: int, data: ImportDirRequest, db: AsyncSess
     if not os.path.exists(import_path):
         raise HTTPException(status_code=400, detail=f"Path not found: {import_path}")
 
-    if data.format == "yolov8-obb":
-        return await _import_yolov8_obb(project_id, import_path, data, db)
+    fmt_to_task = {
+        "yolov8-obb": "obb",
+        "yolov8-detect": "detect",
+        "yolov8-seg": "segment",
+    }
+    if data.format in fmt_to_task:
+        return await _import_yolo(project_id, import_path, data, db, fmt_to_task[data.format])
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported import format: {data.format}")
+
+
+def _parse_data_yaml_names(base_path: str) -> dict:
+    """Extract class name mapping from a YOLO dataset's data.yaml.
+
+    Returns ``{class_index: class_name}``, e.g. ``{0: 'person', 1: 'car'}``.
+    Returns an empty dict if data.yaml is missing or unparseable.
+    """
+    yaml_path = os.path.join(base_path, "data.yaml")
+    if not os.path.exists(yaml_path):
+        return {}
+
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        return {}
+
+    names = {}
+    in_names = False
+    auto_idx = 0
+    for line in content.splitlines():
+        stripped = line.strip()
+
+        if in_names:
+            if not stripped:
+                break
+            # Block-list form: ``- name`` (index implied by order).
+            lm = re.match(r"^-\s*(.+?)\s*$", stripped)
+            if lm:
+                names[auto_idx] = lm.group(1).strip().strip("'\"")
+                auto_idx += 1
+                continue
+            # Dict form: ``0: name``.
+            m = re.match(r"^(\d+):\s*(.+?)\s*$", stripped)
+            if m:
+                names[int(m.group(1))] = m.group(2).strip().strip("'\"")
+            else:
+                break
+        elif stripped == "names:" or stripped.startswith("names:"):
+            inline = stripped[len("names:"):].strip()
+            if not inline:
+                in_names = True
+            elif inline.startswith("[") and inline.endswith("]"):
+                items = re.findall(r"'([^']*)'|\"([^\"]*)\"", inline[1:-1])
+                for i, m in enumerate(items):
+                    names[i] = m[0] or m[1]
+                break
+            else:
+                m = re.match(r"^(\d+):\s*(.+?)\s*$", inline)
+                if m:
+                    names[int(m.group(1))] = m.group(2)
+                in_names = True
+
+    return names
 
 
 async def _resolve_import_classes(project_id: int, db: AsyncSession) -> dict:
@@ -304,16 +365,45 @@ async def _resolve_import_classes(project_id: int, db: AsyncSession) -> dict:
     return by_index
 
 
-async def _import_yolov8_obb(project_id: int, base_path: str, data: ImportDirRequest, db: AsyncSession):
+# Distinct, stable colors for auto-created classes on import.
+_IMPORT_PALETTE = [
+    "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",
+    "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e",
+]
+
+
+def _color_for(idx: int) -> str:
+    return _IMPORT_PALETTE[idx % len(_IMPORT_PALETTE)]
+
+
+async def _import_yolo(project_id: int, base_path: str, data: ImportDirRequest, db: AsyncSession, task_type: str):
+    import json
     import shutil
     from PIL import Image
-    from backend.services.geometry import polygon_to_obb, normalize_angle
+    from backend.services.geometry import polygon_to_obb, normalize_angle, polygon_bbox
 
     imported = 0
     task_id = f"import_{project_id}"
 
+    yaml_names = _parse_data_yaml_names(base_path)
+
     by_index = await _resolve_import_classes(project_id, db)
     next_index = (max(by_index.keys()) + 1) if by_index else 0
+
+    # Pre-create every class declared in data.yaml so they carry their names
+    # (and distinct colors) even if some have no annotations in this dataset.
+    for idx in sorted(yaml_names.keys()):
+        if idx not in by_index:
+            label = ClassLabel(
+                project_id=project_id,
+                name=yaml_names[idx] or f"class_{idx}",
+                color=_color_for(idx),
+                index=idx,
+            )
+            db.add(label)
+            await db.flush()
+            by_index[idx] = label
+            next_index = max(next_index, idx + 1)
 
     async def class_id_for(src_idx: int) -> int:
         nonlocal next_index
@@ -322,11 +412,12 @@ async def _import_yolov8_obb(project_id: int, base_path: str, data: ImportDirReq
             return int(data.class_mapping[str(src_idx)])
         if src_idx in by_index:
             return by_index[src_idx].id
-        # Auto-create a placeholder class preserving the source index.
+        # Auto-create a class, preferring the name from data.yaml.
+        class_name = yaml_names.get(src_idx, f"class_{src_idx}")
         label = ClassLabel(
             project_id=project_id,
-            name=f"class_{src_idx}",
-            color="#3b82f6",
+            name=class_name,
+            color=_color_for(src_idx),
             index=src_idx,
         )
         db.add(label)
@@ -396,8 +487,18 @@ async def _import_yolov8_obb(project_id: int, base_path: str, data: ImportDirReq
                         continue
                     src_idx = int(float(parts[0]))
 
-                    if len(parts) >= 9:
-                        # Standard YOLOv8-OBB: class x1 y1 x2 y2 x3 y3 x4 y4 (normalized)
+                    angle = 0.0
+                    points_json = None
+                    if task_type == "segment":
+                        # YOLO-seg polygon: class x1 y1 ... xn yn (normalized).
+                        coords = list(map(float, parts[1:]))
+                        if len(coords) < 6:  # need at least 3 points
+                            continue
+                        pts = [[coords[i], coords[i + 1]] for i in range(0, len(coords) - 1, 2)]
+                        cx, cy, bw, bh = polygon_bbox(pts)
+                        points_json = json.dumps(pts)
+                    elif task_type == "obb" and len(parts) >= 9:
+                        # YOLOv8-OBB: class x1 y1 x2 y2 x3 y3 x4 y4 (normalized).
                         coords = list(map(float, parts[1:9]))
                         pts_px = [
                             (coords[i] * w, coords[i + 1] * h)
@@ -407,9 +508,10 @@ async def _import_yolov8_obb(project_id: int, base_path: str, data: ImportDirReq
                         cx, cy = cx_px / w, cy_px / h
                         bw, bh = bw_px / w, bh_px / h
                     else:
-                        # Legacy: class cx cy w h [angle]
+                        # Detect (class cx cy w h) or legacy OBB (class cx cy w h angle).
                         cx, cy, bw, bh = map(float, parts[1:5])
-                        angle = normalize_angle(float(parts[5])) if len(parts) > 5 else 0.0
+                        if task_type == "obb" and len(parts) > 5:
+                            angle = normalize_angle(float(parts[5]))
 
                     class_id = await class_id_for(src_idx)
                     bbox = OrientedBBox(
@@ -420,6 +522,7 @@ async def _import_yolov8_obb(project_id: int, base_path: str, data: ImportDirReq
                         width=min(1.0, max(0.0, bw)),
                         height=min(1.0, max(0.0, bh)),
                         angle=angle,
+                        points_json=points_json,
                         is_verified=True,
                     )
                     db.add(bbox)
