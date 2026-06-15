@@ -17,15 +17,50 @@ import {
 } from 'lucide-react';
 import { useApp } from '../App';
 import apiClient from '../api/client';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'File from disk': 'Файл с диска',
+  'Project video': 'Видео проекта',
+  'Webcam': 'Веб-камера',
+  'File selection is only available in the desktop app': 'Выбор файла доступен только в десктоп-приложении',
+  'Select a video file': 'Выберите видео файл',
+  'Select a project video': 'Выберите видео проекта',
+  'Inference: {msg}': 'Инференс: {msg}',
+  'Failed to start the test: {msg}': 'Не удалось запустить тест: {msg}',
+  'Model test: {name}': 'Тест модели: {name}',
+  'Source': 'Источник',
+  'Choose video…': 'Выбрать видео…',
+  'Project': 'Проект',
+  '— select —': '— выберите —',
+  'Video': 'Видео',
+  'no videos': 'нет видео',
+  'Camera index': 'Индекс камеры',
+  'Usually 0 — the built-in camera': 'Обычно 0 — встроенная камера',
+  'Confidence threshold': 'Порог уверенности',
+  'Start': 'Запустить',
+  'Stop inference': 'Остановить',
+  'Select a source and click "Start"': 'Выберите источник и нажмите «Запустить»',
+  'Play': 'Воспроизвести',
+  'Pause': 'Пауза',
+  'Run again': 'Запустить заново',
+  'Record annotated video': 'Запись размеченного видео',
+  'Recording…': 'Запись…',
+  'Record': 'Запись',
+  'Download the annotated video': 'Скачать размеченное видео',
+  'frame {n}': 'кадр {n}',
+  'detections: {n}': 'детекций: {n}',
+  'finished': 'завершено',
+});
 
 const SOURCES = [
-  { id: 'file', label: 'Файл с диска', icon: FileVideo },
-  { id: 'project_video', label: 'Видео проекта', icon: Film },
-  { id: 'webcam', label: 'Веб-камера', icon: Webcam },
+  { id: 'file', label: 'File from disk', icon: FileVideo },
+  { id: 'project_video', label: 'Project video', icon: Film },
+  { id: 'webcam', label: 'Webcam', icon: Webcam },
 ];
 
 export default function ModelTester({ model, onClose }) {
-  const { addToast } = useApp();
+  const { addToast, t } = useApp();
 
   const [sourceMode, setSourceMode] = useState('file');
   const [filePath, setFilePath] = useState(null);
@@ -80,7 +115,7 @@ export default function ModelTester({ model, onClose }) {
 
   const pickFile = async () => {
     if (!window.electronAPI?.selectVideoFile) {
-      addToast('Выбор файла доступен только в десктоп-приложении', 'error');
+      addToast(t('File selection is only available in the desktop app'), 'error');
       return;
     }
     const p = await window.electronAPI.selectVideoFile();
@@ -89,11 +124,11 @@ export default function ModelTester({ model, onClose }) {
 
   const buildSource = () => {
     if (sourceMode === 'file') {
-      if (!filePath) { addToast('Выберите видео файл', 'error'); return null; }
+      if (!filePath) { addToast(t('Select a video file'), 'error'); return null; }
       return { type: 'file', path: filePath };
     }
     if (sourceMode === 'project_video') {
-      if (!videoId) { addToast('Выберите видео проекта', 'error'); return null; }
+      if (!videoId) { addToast(t('Select a project video'), 'error'); return null; }
       return { type: 'project_video', video_id: Number(videoId) };
     }
     return { type: 'webcam', index: Number(webcamIndex) || 0 };
@@ -107,7 +142,7 @@ export default function ModelTester({ model, onClose }) {
         setStatus(res.data);
         if (!seeking) setSeekValue(res.data.frame || 0);
         if (res.data.error) {
-          addToast('Инференс: ' + res.data.error, 'error', 7000);
+          addToast(t('Inference: {msg}', { msg: res.data.error }), 'error', 7000);
           clearInterval(pollTimer.current);
         }
       } catch {
@@ -132,7 +167,7 @@ export default function ModelTester({ model, onClose }) {
       apiClient.inferenceControl(sid, 'conf', conf).catch(() => {});
       startPolling(sid);
     } catch (e) {
-      addToast('Не удалось запустить тест: ' + (e.message || ''), 'error', 7000);
+      addToast(t('Failed to start the test: {msg}', { msg: e.message || '' }), 'error', 7000);
     } finally {
       setStarting(false);
     }
@@ -188,7 +223,7 @@ export default function ModelTester({ model, onClose }) {
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <h2 className="text-lg font-bold flex items-center gap-2 min-w-0">
             <Play size={18} className="text-blue-400 flex-shrink-0" />
-            <span className="truncate">Тест модели: {model.name}</span>
+            <span className="truncate">{t('Model test: {name}', { name: model.name })}</span>
           </h2>
           <button className="p-1 hover:bg-slate-700 rounded-lg transition" onClick={onClose}>
             <X size={18} />
@@ -199,7 +234,7 @@ export default function ModelTester({ model, onClose }) {
           {/* Left: source config */}
           <div className="w-72 flex-shrink-0 border-r border-slate-700 p-4 space-y-4 overflow-y-auto">
             <div>
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Источник</h3>
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t('Source')}</h3>
               <div className="grid grid-cols-3 gap-1">
                 {SOURCES.map((s) => {
                   const Icon = s.icon;
@@ -212,7 +247,7 @@ export default function ModelTester({ model, onClose }) {
                       onClick={() => setSourceMode(s.id)}
                     >
                       <Icon size={18} />
-                      {s.label.split(' ')[0]}
+                      {t(s.label).split(' ')[0]}
                     </button>
                   );
                 })}
@@ -222,7 +257,7 @@ export default function ModelTester({ model, onClose }) {
             {sourceMode === 'file' && (
               <div>
                 <button className="btn-secondary w-full text-sm py-2" onClick={pickFile}>
-                  Выбрать видео…
+                  {t('Choose video…')}
                 </button>
                 {filePath && (
                   <p className="text-[11px] text-slate-400 mt-2 break-all" title={filePath}>
@@ -235,16 +270,16 @@ export default function ModelTester({ model, onClose }) {
             {sourceMode === 'project_video' && (
               <div className="space-y-2">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Проект</label>
+                  <label className="block text-xs text-slate-400 mb-1">{t('Project')}</label>
                   <select className="input-field w-full text-sm py-1.5" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                    <option value="">— выберите —</option>
+                    <option value="">{t('— select —')}</option>
                     {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Видео</label>
+                  <label className="block text-xs text-slate-400 mb-1">{t('Video')}</label>
                   <select className="input-field w-full text-sm py-1.5" value={videoId} onChange={(e) => setVideoId(e.target.value)} disabled={!videos.length}>
-                    {!videos.length && <option value="">нет видео</option>}
+                    {!videos.length && <option value="">{t('no videos')}</option>}
                     {videos.map((v) => <option key={v.id} value={v.id}>{v.original_filename}</option>)}
                   </select>
                 </div>
@@ -253,16 +288,16 @@ export default function ModelTester({ model, onClose }) {
 
             {sourceMode === 'webcam' && (
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Индекс камеры</label>
+                <label className="block text-xs text-slate-400 mb-1">{t('Camera index')}</label>
                 <input type="number" min="0" max="10" className="input-field w-full text-sm py-1.5"
                   value={webcamIndex} onChange={(e) => setWebcamIndex(e.target.value)} />
-                <p className="text-[10px] text-slate-500 mt-1">Обычно 0 — встроенная камера</p>
+                <p className="text-[10px] text-slate-500 mt-1">{t('Usually 0 — the built-in camera')}</p>
               </div>
             )}
 
             <div>
               <label className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                <span className="flex items-center gap-1"><Gauge size={12} /> Порог уверенности</span>
+                <span className="flex items-center gap-1"><Gauge size={12} /> {t('Confidence threshold')}</span>
                 <span className="text-slate-200">{conf.toFixed(2)}</span>
               </label>
               <input type="range" min="0.05" max="0.95" step="0.05" className="w-full accent-blue-500"
@@ -273,11 +308,11 @@ export default function ModelTester({ model, onClose }) {
               <button className="btn-primary w-full flex items-center justify-center gap-2 text-sm py-2"
                 onClick={handleStart} disabled={starting}>
                 {starting ? <Loader2 size={16} className="loading-spinner" /> : <Play size={16} />}
-                Запустить
+                {t('Start')}
               </button>
             ) : (
               <button className="btn-danger w-full flex items-center justify-center gap-2 text-sm py-2" onClick={handleStop}>
-                <StopIcon size={16} /> Остановить
+                <StopIcon size={16} /> {t('Stop inference')}
               </button>
             )}
           </div>
@@ -290,7 +325,7 @@ export default function ModelTester({ model, onClose }) {
               ) : (
                 <div className="text-slate-600 text-sm flex flex-col items-center gap-2">
                   <Film size={48} strokeWidth={1} />
-                  Выберите источник и нажмите «Запустить»
+                  {t('Select a source and click "Start"')}
                 </div>
               )}
             </div>
@@ -310,11 +345,11 @@ export default function ModelTester({ model, onClose }) {
                   />
                 )}
                 <div className="flex items-center gap-3">
-                  <button className="btn-secondary p-2" onClick={togglePause} title={status?.paused ? 'Воспроизвести' : 'Пауза'}>
+                  <button className="btn-secondary p-2" onClick={togglePause} title={status?.paused ? t('Play') : t('Pause')}>
                     {status?.paused ? <Play size={16} /> : <Pause size={16} />}
                   </button>
                   {status?.finished && !isStream && (
-                    <button className="btn-secondary p-2" onClick={handleStart} title="Запустить заново">
+                    <button className="btn-secondary p-2" onClick={handleStart} title={t('Run again')}>
                       <RotateCcw size={16} />
                     </button>
                   )}
@@ -323,14 +358,14 @@ export default function ModelTester({ model, onClose }) {
                       status?.recording ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
                     }`}
                     onClick={toggleRecord}
-                    title="Запись размеченного видео"
+                    title={t('Record annotated video')}
                   >
                     <Circle size={14} className={status?.recording ? 'fill-current' : ''} />
-                    {status?.recording ? 'Запись…' : 'Запись'}
+                    {status?.recording ? t('Recording…') : t('Record')}
                   </button>
                   {status?.has_output && (
-                    <button className="btn-secondary p-2 flex items-center gap-1.5 text-sm" onClick={downloadRecording} title="Скачать размеченное видео">
-                      <Download size={14} /> Скачать
+                    <button className="btn-secondary p-2 flex items-center gap-1.5 text-sm" onClick={downloadRecording} title={t('Download the annotated video')}>
+                      <Download size={14} /> {t('Download')}
                     </button>
                   )}
                 </div>
@@ -341,11 +376,11 @@ export default function ModelTester({ model, onClose }) {
             <div className="mt-3 flex items-center flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 border-t border-slate-700/60 pt-2">
               <span className="flex items-center gap-1"><Cpu size={12} /> {status?.device || '—'}</span>
               <span className="flex items-center gap-1">
-                <Film size={12} /> кадр {status?.frame ?? 0}{status?.total ? ` / ${status.total}` : ''}
+                <Film size={12} /> {t('frame {n}', { n: status?.frame ?? 0 })}{status?.total ? ` / ${status.total}` : ''}
               </span>
               <span>{status?.fps != null ? `${status.fps} FPS` : '—'}</span>
-              <span className="flex items-center gap-1"><Crosshair size={12} /> детекций: {status?.detections ?? 0}</span>
-              {status?.finished && <span className="text-green-400">завершено</span>}
+              <span className="flex items-center gap-1"><Crosshair size={12} /> {t('detections: {n}', { n: status?.detections ?? 0 })}</span>
+              {status?.finished && <span className="text-green-400">{t('finished')}</span>}
             </div>
           </div>
         </div>
