@@ -33,6 +33,12 @@ data/
 # Large model files
 models/*.pt
 
+# YOLO base weights auto-downloaded by ultralytics into the repo root at
+# train/inference time. The two checked-in base models stay tracked.
+/*.pt
+!yolo11n.pt
+!yolov8n-obb.pt
+
 # Electron build output
 electron/dist/
 electron/out/
