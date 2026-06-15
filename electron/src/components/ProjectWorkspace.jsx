@@ -582,7 +582,7 @@ export default function ProjectWorkspace() {
               applyClassRef={applyClassRef}
               saveRef={saveRef}
               selectAnnotationRef={selectAnnotationRef}
-              deleteAnnotationRef={deleteAnnotationRef}
+              deleteActiveRef={deleteAnnotationRef}
               onRefreshAnnotations={() => {
                 // will be handled internally
               }}
