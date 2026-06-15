@@ -11,15 +11,39 @@ import {
   Tag,
 } from 'lucide-react';
 import apiClient from '../api/client';
+import { useApp } from '../App';
+import { addTranslations } from '../i18n';
 
-// Russian plural form for "кадр" (1 кадр, 2 кадра, 5 кадров).
-function framesWord(n) {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a >= 11 && a <= 14) return 'кадров';
-  if (b === 1) return 'кадр';
-  if (b >= 2 && b <= 4) return 'кадра';
-  return 'кадров';
+addTranslations({
+  'Folders': 'Папки',
+  'No frames': 'Нет кадров',
+  'Folder': 'Папка',
+  'Back to folders': 'Назад к папкам',
+  'Back': 'Назад',
+  'Class: {name}': 'Класс: {name}',
+  'Frame #...': '№ кадра...',
+  'All': 'Все',
+  'Labeled': 'Разм.',
+  'Unlabeled': 'Неразм.',
+  'shown {n}': 'показано {n}',
+  'loaded {n}': 'загружено {n}',
+  '{n} labeled': '{n} разм.',
+  'Loading…': 'Загрузка…',
+  'Load 500 more': 'Загрузить ещё 500',
+  'Upload video': 'Загрузить видео',
+});
+
+// Plural form for "frame" — Russian has three forms, English two.
+function framesWord(n, lang) {
+  if (lang === 'ru') {
+    const a = Math.abs(n) % 100;
+    const b = a % 10;
+    if (a >= 11 && a <= 14) return 'кадров';
+    if (b === 1) return 'кадр';
+    if (b >= 2 && b <= 4) return 'кадра';
+    return 'кадров';
+  }
+  return n === 1 ? 'frame' : 'frames';
 }
 
 export default function FrameGallery({
@@ -40,6 +64,7 @@ export default function FrameGallery({
   onUploadClick,
   onLoadMore,
 }) {
+  const { t, lang } = useApp();
   const [filter, setFilter] = useState('all');
   const [searchIdx, setSearchIdx] = useState('');
   const galleryRef = useRef(null);
@@ -74,13 +99,13 @@ export default function FrameGallery({
     return (
       <div className="h-full flex flex-col bg-slate-900/50">
         <div className="p-2 border-b border-slate-700/50 text-xs text-slate-400 font-medium flex items-center gap-1.5">
-          <Folder size={14} /> Папки ({sources.length})
+          <Folder size={14} /> {t('Folders')} ({sources.length})
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           {sources.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-slate-600 gap-2">
               <ImageIcon size={24} />
-              <p className="text-xs">Нет кадров</p>
+              <p className="text-xs">{t('No frames')}</p>
             </div>
           ) : (
             sources.map((s) => (
@@ -104,7 +129,7 @@ export default function FrameGallery({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-black/10" />
                   <div className="absolute top-1 left-1 bg-blue-600/90 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
                     {s.kind === 'imported' ? <Tag size={10} /> : <Film size={10} />}
-                    Папка
+                    {t('Folder')}
                   </div>
                   <div className="absolute bottom-1 left-1 right-1">
                     <div className="text-[11px] text-white font-medium truncate flex items-center gap-1">
@@ -112,7 +137,7 @@ export default function FrameGallery({
                       {s.name}
                     </div>
                     <div className="text-[10px] text-slate-300">
-                      {s.frame_count} кадров · {s.labeled_count} разм.
+                      {s.frame_count} {framesWord(s.frame_count, lang)} · {t('{n} labeled', { n: s.labeled_count })}
                     </div>
                   </div>
                 </div>
@@ -126,7 +151,7 @@ export default function FrameGallery({
             onClick={onUploadClick}
           >
             <Upload size={14} />
-            Загрузить видео
+            {t('Upload video')}
           </button>
         </div>
       </div>
@@ -141,11 +166,11 @@ export default function FrameGallery({
           <button
             className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 w-full"
             onClick={onBack}
-            title="Назад к папкам"
+            title={t('Back to folders')}
           >
             <ChevronLeft size={14} />
             <span className="truncate">
-              {activeKind === 'class' ? `Класс: ${activeName}` : activeName || 'Назад'}
+              {activeKind === 'class' ? t('Class: {name}', { name: activeName }) : activeName || t('Back')}
             </span>
           </button>
         )}
@@ -154,7 +179,7 @@ export default function FrameGallery({
           <input
             className="w-full pl-7 pr-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-200
                        focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
-            placeholder="№ кадра..."
+            placeholder={t('Frame #...')}
             value={searchIdx}
             onChange={(e) => setSearchIdx(e.target.value)}
             type="number"
@@ -165,9 +190,9 @@ export default function FrameGallery({
         {/* Segmented filter control */}
         <div className="flex p-0.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-medium">
           {[
-            { id: 'all', label: 'Все', active: 'bg-slate-600 text-white' },
-            { id: 'labeled', label: 'Разм.', active: 'bg-green-600/80 text-white' },
-            { id: 'unlabeled', label: 'Неразм.', active: 'bg-amber-600/80 text-white' },
+            { id: 'all', label: t('All'), active: 'bg-slate-600 text-white' },
+            { id: 'labeled', label: t('Labeled'), active: 'bg-green-600/80 text-white' },
+            { id: 'unlabeled', label: t('Unlabeled'), active: 'bg-amber-600/80 text-white' },
           ].map((f) => (
             <button
               key={f.id}
@@ -186,12 +211,12 @@ export default function FrameGallery({
           <span className="flex items-center gap-1">
             <ImageIcon size={12} className="text-slate-600" />
             <span className="text-slate-200 font-semibold tabular-nums">{total}</span>
-            <span>{framesWord(total)}</span>
+            <span>{framesWord(total, lang)}</span>
           </span>
           {(filter !== 'all' || searchIdx)
-            ? <span className="tabular-nums">показано {filteredFrames.length}</span>
+            ? <span className="tabular-nums">{t('shown {n}', { n: filteredFrames.length })}</span>
             : frames.length < total
-              ? <span className="tabular-nums">загружено {frames.length}</span>
+              ? <span className="tabular-nums">{t('loaded {n}', { n: frames.length })}</span>
               : null}
         </div>
       </div>
@@ -217,7 +242,7 @@ export default function FrameGallery({
                 <div className="aspect-video bg-slate-800 relative">
                   <img
                     src={apiClient.getFrameThumbUrl(projectId, frame.image_path)}
-                    alt={`Кадр ${frame.frame_index}`}
+                    alt={`Frame ${frame.frame_index}`}
                     className="w-full h-full object-cover"
                     loading="lazy"
                     onError={(e) => {
@@ -240,7 +265,7 @@ export default function FrameGallery({
         )}
         {loading && (
           <div className="flex items-center justify-center py-3 text-slate-500 gap-2 text-xs">
-            <Loader2 size={14} className="loading-spinner" /> Загрузка…
+            <Loader2 size={14} className="loading-spinner" /> {t('Loading…')}
           </div>
         )}
         {!loading && hasMore && (
@@ -248,7 +273,7 @@ export default function FrameGallery({
             className="w-full text-xs text-blue-400 hover:text-blue-300 py-2"
             onClick={onLoadMore}
           >
-            Загрузить ещё 500
+            {t('Load 500 more')}
           </button>
         )}
       </div>

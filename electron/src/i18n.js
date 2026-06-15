@@ -34,6 +34,19 @@ const RU = {
   'Failed to load projects': 'Не удалось загрузить проекты',
   'Failed to load classes': 'Не удалось загрузить классы',
   'Failed to load frames': 'Не удалось загрузить кадры',
+
+  // --- common words (always available regardless of which module loaded) ---
+  'Save': 'Сохранить',
+  'Cancel': 'Отмена',
+  'Delete': 'Удалить',
+  'Close': 'Закрыть',
+  'Add': 'Добавить',
+  'Edit': 'Редактировать',
+  'Create': 'Создать',
+  'Loading…': 'Загрузка…',
+  'Loading...': 'Загрузка...',
+  'Done': 'Готово',
+  'Error': 'Ошибка',
 };
 
 export function makeT(lang) {

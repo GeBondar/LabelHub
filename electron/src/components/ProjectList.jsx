@@ -15,28 +15,54 @@ import {
 import { useApp } from '../App';
 import apiClient from '../api/client';
 import ImportPanel from './ImportPanel';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'OBB (oriented boxes)': 'OBB (ориентированные боксы)',
+  'Rotated rectangles with a heading arrow (YOLO-OBB)': 'Повёрнутые прямоугольники со стрелкой направления (YOLO-OBB)',
+  'Detection (plain boxes)': 'Детекция (обычные боксы)',
+  'Axis-aligned rectangles (YOLO detect)': 'Прямоугольники без поворота (YOLO detect)',
+  'Segmentation (polygons)': 'Сегментация (полигоны)',
+  'Instance segmentation polygons + SAM2 (YOLO-seg)': 'Instance-сегментация полигонами + SAM2 (YOLO-seg)',
+  'Enter a project name': 'Введите название проекта',
+  'Failed to create project': 'Ошибка создания проекта',
+  'Create a new project': 'Создать новый проект',
+  'Project name *': 'Название проекта *',
+  'My annotation project': 'Мой проект разметки',
+  'Description': 'Описание',
+  'Project description...': 'Описание проекта...',
+  'Network type *': 'Тип нейросети *',
+  'The type is fixed at creation and drives the annotation tools, export and training.':
+    'Тип фиксируется при создании и определяет инструменты разметки, экспорт и обучение.',
+  'Cancel': 'Отмена',
+  'Create': 'Создать',
+  'Project "{name}" deleted': 'Проект "{name}" удалён',
+  'Failed to delete project': 'Ошибка удаления проекта',
+  'Delete project?': 'Удалить проект?',
+  'Do you really want to delete the project "{name}"?': 'Вы действительно хотите удалить проект "{name}"?',
+  'All data, including frames and annotations, will be permanently deleted.':
+    'Все данные, включая кадры и аннотации, будут безвозвратно удалены.',
+  'Delete project': 'Удалить проект',
+  'Total frames': 'Всего кадров',
+  'Labeled frames / total annotations': 'Размечено кадров / всего аннотаций',
+  'Manage annotation projects': 'Управление проектами аннотации',
+  'Import dataset': 'Импорт датасета',
+  'New project': 'Новый проект',
+  'No projects': 'Нет проектов',
+  'Create a new project or import an existing dataset': 'Создайте новый проект или импортируйте существующий датасет',
+  'Create project': 'Создать проект',
+});
 
 const TASK_TYPE_LABEL = { obb: 'OBB', detect: 'Detect', segment: 'Segment' };
 
 const TASK_TYPES = [
-  {
-    id: 'obb',
-    name: 'OBB (ориентированные боксы)',
-    desc: 'Повёрнутые прямоугольники со стрелкой направления (YOLO-OBB)',
-  },
-  {
-    id: 'detect',
-    name: 'Детекция (обычные боксы)',
-    desc: 'Прямоугольники без поворота (YOLO detect)',
-  },
-  {
-    id: 'segment',
-    name: 'Сегментация (полигоны)',
-    desc: 'Instance-сегментация полигонами + SAM2 (YOLO-seg)',
-  },
+  { id: 'obb', name: 'OBB (oriented boxes)', desc: 'Rotated rectangles with a heading arrow (YOLO-OBB)' },
+  { id: 'detect', name: 'Detection (plain boxes)', desc: 'Axis-aligned rectangles (YOLO detect)' },
+  { id: 'segment', name: 'Segmentation (polygons)', desc: 'Instance segmentation polygons + SAM2 (YOLO-seg)' },
 ];
 
 function CreateProjectModal({ onClose, onCreated }) {
+  const { t } = useApp();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [taskType, setTaskType] = useState('obb');
@@ -46,7 +72,7 @@ function CreateProjectModal({ onClose, onCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Введите название проекта');
+      setError(t('Enter a project name'));
       return;
     }
     setLoading(true);
@@ -60,7 +86,7 @@ function CreateProjectModal({ onClose, onCreated }) {
       onCreated();
       onClose();
     } catch (err) {
-      setError(err.message || 'Ошибка создания проекта');
+      setError(err.message || t('Failed to create project'));
     } finally {
       setLoading(false);
     }
@@ -69,37 +95,37 @@ function CreateProjectModal({ onClose, onCreated }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center animate-fade-in">
       <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 w-full max-w-md shadow-2xl">
-        <h2 className="text-lg font-bold mb-4">Создать новый проект</h2>
+        <h2 className="text-lg font-bold mb-4">{t('Create a new project')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-sm text-slate-400 mb-1">Название проекта *</label>
+            <label className="block text-sm text-slate-400 mb-1">{t('Project name *')}</label>
             <input
               className="input-field"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Мой проект разметки"
+              placeholder={t('My annotation project')}
               autoFocus
               maxLength={255}
             />
           </div>
           <div className="mb-4">
-            <label className="block text-sm text-slate-400 mb-1">Описание</label>
+            <label className="block text-sm text-slate-400 mb-1">{t('Description')}</label>
             <textarea
               className="input-field resize-none h-24"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Описание проекта..."
+              placeholder={t('Project description...')}
               maxLength={2000}
             />
           </div>
           <div className="mb-4">
-            <label className="block text-sm text-slate-400 mb-2">Тип нейросети *</label>
+            <label className="block text-sm text-slate-400 mb-2">{t('Network type *')}</label>
             <div className="space-y-2">
-              {TASK_TYPES.map((t) => (
+              {TASK_TYPES.map((opt) => (
                 <label
-                  key={t.id}
+                  key={opt.id}
                   className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
-                    taskType === t.id
+                    taskType === opt.id
                       ? 'border-blue-500 bg-blue-900/20'
                       : 'border-slate-600 bg-slate-700/30 hover:border-slate-500'
                   }`}
@@ -107,20 +133,20 @@ function CreateProjectModal({ onClose, onCreated }) {
                   <input
                     type="radio"
                     name="task_type"
-                    value={t.id}
-                    checked={taskType === t.id}
-                    onChange={() => setTaskType(t.id)}
+                    value={opt.id}
+                    checked={taskType === opt.id}
+                    onChange={() => setTaskType(opt.id)}
                     className="mt-0.5"
                   />
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-slate-200">{t.name}</div>
-                    <div className="text-xs text-slate-400 mt-0.5">{t.desc}</div>
+                    <div className="text-sm font-medium text-slate-200">{t(opt.name)}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{t(opt.desc)}</div>
                   </div>
                 </label>
               ))}
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Тип фиксируется при создании и определяет инструменты разметки, экспорт и обучение.
+              {t('The type is fixed at creation and drives the annotation tools, export and training.')}
             </p>
           </div>
           {error && (
@@ -131,10 +157,10 @@ function CreateProjectModal({ onClose, onCreated }) {
           )}
           <div className="flex justify-end gap-3">
             <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>
-              Отмена
+              {t('Cancel')}
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? <Loader2 size={16} className="loading-spinner inline" /> : 'Создать'}
+              {loading ? <Loader2 size={16} className="loading-spinner inline" /> : t('Create')}
             </button>
           </div>
         </form>
@@ -145,17 +171,17 @@ function CreateProjectModal({ onClose, onCreated }) {
 
 function DeleteConfirmModal({ project, onClose, onDeleted }) {
   const [loading, setLoading] = useState(false);
-  const { addToast } = useApp();
+  const { addToast, t } = useApp();
 
   const handleDelete = async () => {
     setLoading(true);
     try {
       await apiClient.deleteProject(project.id);
-      addToast(`Проект "${project.name}" удалён`, 'success');
+      addToast(t('Project "{name}" deleted', { name: project.name }), 'success');
       onDeleted();
       onClose();
     } catch (err) {
-      addToast('Ошибка удаления проекта', 'error');
+      addToast(t('Failed to delete project'), 'error');
     } finally {
       setLoading(false);
     }
@@ -166,20 +192,20 @@ function DeleteConfirmModal({ project, onClose, onDeleted }) {
       <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 w-full max-w-sm shadow-2xl">
         <div className="flex items-center gap-3 mb-4 text-red-400">
           <AlertCircle size={24} />
-          <h2 className="text-lg font-bold">Удалить проект?</h2>
+          <h2 className="text-lg font-bold">{t('Delete project?')}</h2>
         </div>
         <p className="text-slate-400 mb-2">
-          Вы действительно хотите удалить проект "{project.name}"?
+          {t('Do you really want to delete the project "{name}"?', { name: project.name })}
         </p>
         <p className="text-sm text-slate-500 mb-6">
-          Все данные, включая кадры и аннотации, будут безвозвратно удалены.
+          {t('All data, including frames and annotations, will be permanently deleted.')}
         </p>
         <div className="flex justify-end gap-3">
           <button className="btn-secondary" onClick={onClose} disabled={loading}>
-            Отмена
+            {t('Cancel')}
           </button>
           <button className="btn-danger" onClick={handleDelete} disabled={loading}>
-            {loading ? <Loader2 size={16} className="loading-spinner inline" /> : 'Удалить'}
+            {loading ? <Loader2 size={16} className="loading-spinner inline" /> : t('Delete')}
           </button>
         </div>
       </div>
@@ -188,6 +214,7 @@ function DeleteConfirmModal({ project, onClose, onDeleted }) {
 }
 
 function ProjectCard({ project, onDelete, onSelect }) {
+  const { t, lang } = useApp();
   const [thumbnail, setThumbnail] = useState(null);
   const [stats, setStats] = useState(null);
   const [imgError, setImgError] = useState(false);
@@ -216,7 +243,7 @@ function ProjectCard({ project, onDelete, onSelect }) {
 
   const formatDate = (d) => {
     if (!d) return '';
-    return new Date(d).toLocaleDateString('ru-RU', {
+    return new Date(d).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {
       day: 'numeric', month: 'long', year: 'numeric',
     });
   };
@@ -251,7 +278,7 @@ function ProjectCard({ project, onDelete, onSelect }) {
           <button
             className="p-1 rounded hover:bg-red-900/40 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
             onClick={(e) => { e.stopPropagation(); onDelete(project); }}
-            title="Удалить проект"
+            title={t('Delete project')}
           >
             <Trash2 size={16} />
           </button>
@@ -262,13 +289,13 @@ function ProjectCard({ project, onDelete, onSelect }) {
         <div className="flex items-center gap-4 text-xs text-slate-500">
           {stats && (
             <>
-              <span className="flex items-center gap-1" title="Всего кадров">
+              <span className="flex items-center gap-1" title={t('Total frames')}>
                 <ImageIcon size={12} />
                 {stats.total_frames || 0}
               </span>
               <span
                 className="flex items-center gap-1"
-                title="Размечено кадров / всего аннотаций"
+                title={t('Labeled frames / total annotations')}
               >
                 <Tag size={12} />
                 {stats.labeled_frames || 0} / {stats.total_annotations || 0}
@@ -287,7 +314,7 @@ function ProjectCard({ project, onDelete, onSelect }) {
 
 export default function ProjectList() {
   const navigate = useNavigate();
-  const { projects, projectsLoading, loadProjects, addToast } = useApp();
+  const { projects, projectsLoading, loadProjects, addToast, t } = useApp();
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [showImport, setShowImport] = useState(false);
@@ -302,17 +329,17 @@ export default function ProjectList() {
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 flex-shrink-0">
         <div>
-          <h2 className="text-xl font-bold">Датасеты</h2>
-          <p className="text-sm text-slate-400 mt-0.5">Управление проектами аннотации</p>
+          <h2 className="text-xl font-bold">{t('Datasets')}</h2>
+          <p className="text-sm text-slate-400 mt-0.5">{t('Manage annotation projects')}</p>
         </div>
         <div className="flex items-center gap-3">
           <button className="btn-secondary flex items-center gap-2" onClick={() => setShowImport(true)}>
             <Upload size={16} />
-            Импорт датасета
+            {t('Import dataset')}
           </button>
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)}>
             <Plus size={16} />
-            Новый проект
+            {t('New project')}
           </button>
         </div>
       </div>
@@ -326,12 +353,12 @@ export default function ProjectList() {
           <div className="flex flex-col items-center justify-center h-64 text-slate-500 gap-4">
             <FolderOpen size={64} strokeWidth={1} />
             <div className="text-center">
-              <p className="text-lg font-medium">Нет проектов</p>
-              <p className="text-sm mt-1">Создайте новый проект или импортируйте существующий датасет</p>
+              <p className="text-lg font-medium">{t('No projects')}</p>
+              <p className="text-sm mt-1">{t('Create a new project or import an existing dataset')}</p>
             </div>
             <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)}>
               <Plus size={16} />
-              Создать проект
+              {t('Create project')}
             </button>
           </div>
         ) : (
