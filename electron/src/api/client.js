@@ -155,6 +155,7 @@ const apiClient = {
     api.get(`/videos/by-video/${videoId}/frames`, { params }),
   getProjectFrames: (projectId, params = {}) =>
     api.get(`/videos/${projectId}/frames`, { params }),
+  getProjectSources: (projectId) => api.get(`/videos/${projectId}/sources`),
 
   getFrameImageUrl: (projectId, frameImagePath) => {
     if (!frameImagePath) return '';

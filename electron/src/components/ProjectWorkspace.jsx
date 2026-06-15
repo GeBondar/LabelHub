@@ -57,7 +57,6 @@ export default function ProjectWorkspace() {
     setAnnotations,
     classes,
     loadClasses,
-    loadFrames,
     loadAnnotations,
     addToast,
   } = useApp();
@@ -78,10 +77,21 @@ export default function ProjectWorkspace() {
   const [changingAnnId, setChangingAnnId] = useState(null);
   const saveRef = useRef(null);
   const selectAnnotationRef = useRef(null);
+  const deleteAnnotationRef = useRef(null);
   const saveTimerRef = useRef(null);
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(280);
   const [isResizing, setIsResizing] = useState(null);
+
+  // Gallery: folders (one per video + Импорт) vs. a chunk-loaded frame list.
+  const [sources, setSources] = useState([]);
+  const [galleryView, setGalleryView] = useState('frames'); // 'folders' | 'frames'
+  const [activeSource, setActiveSource] = useState(null);    // {kind, video_id?, class_id?, name}
+  const [framesLoading, setFramesLoading] = useState(false);
+  const [framesHasMore, setFramesHasMore] = useState(false);
+  const [framesTotal, setFramesTotal] = useState(0);
+  const framesPageRef = useRef(1);
+  const PAGE = 500;
 
   const projectId = parseInt(id);
   const taskType = currentProject?.task_type || 'obb';
@@ -89,6 +99,107 @@ export default function ProjectWorkspace() {
 
   const currentFrame = frames[currentFrameIndex];
   const currentAnnotations = currentFrame ? (annotations[currentFrame.id] || []) : [];
+  const hasFolders = sources.length >= 2;
+
+  // ----------------------------------------------------------- frame loading
+  const loadSources = useCallback(async () => {
+    try {
+      const res = await apiClient.getProjectSources(projectId);
+      return res.data || [];
+    } catch {
+      return [];
+    }
+  }, [projectId]);
+
+  // Load one 500-frame chunk for a source (video / imported / class / all).
+  const loadSourceFrames = useCallback(async (source, page = 1, append = false) => {
+    setFramesLoading(true);
+    try {
+      const params = { page, page_size: PAGE };
+      if (source?.kind === 'video') params.video_id = source.video_id;
+      else if (source?.kind === 'imported') params.imported = true;
+      else if (source?.kind === 'class') params.class_id = source.class_id;
+      const res = await apiClient.getProjectFrames(projectId, params);
+      const items = res.data?.items || [];
+      const total = res.data?.total || 0;
+      framesPageRef.current = page;
+      setFramesTotal(total);
+      setFramesHasMore(page * PAGE < total);
+      if (append) {
+        setFrames((prev) => [...prev, ...items]);
+      } else {
+        setFrames(items);
+        setCurrentFrameIndex(0);
+      }
+    } catch (e) {
+      addToast('Не удалось загрузить кадры', 'error');
+    } finally {
+      setFramesLoading(false);
+    }
+  }, [projectId, addToast, setFrames, setCurrentFrameIndex]);
+
+  const openSource = useCallback((s) => {
+    const src = { kind: s.kind, video_id: s.video_id, name: s.name };
+    setActiveSource(src);
+    setGalleryView('frames');
+    loadSourceFrames(src, 1, false);
+  }, [loadSourceFrames]);
+
+  const backToFolders = useCallback(async () => {
+    setActiveSource(null);
+    setGalleryView('folders');
+    setFrames([]);
+    setSources(await loadSources());
+  }, [loadSources, setFrames]);
+
+  const loadMore = useCallback(() => {
+    if (framesHasMore && !framesLoading) {
+      loadSourceFrames(activeSource, framesPageRef.current + 1, true);
+    }
+  }, [framesHasMore, framesLoading, activeSource, loadSourceFrames]);
+
+  const exitToDefault = useCallback(() => {
+    if (sources.length >= 2) {
+      backToFolders();
+    } else if (sources[0]) {
+      openSource(sources[0]);
+    } else {
+      const all = { kind: 'all', name: 'Все кадры' };
+      setActiveSource(all);
+      setGalleryView('frames');
+      loadSourceFrames(all, 1, false);
+    }
+  }, [sources, backToFolders, openSource, loadSourceFrames]);
+
+  // Click a class chip -> show only frames containing it (project-wide, flat);
+  // click the same class again -> clear and return to folders / single source.
+  const toggleClassFilter = useCallback((classId, name) => {
+    if (activeSource?.kind === 'class' && activeSource.class_id === classId) {
+      exitToDefault();
+    } else {
+      const src = { kind: 'class', class_id: classId, name };
+      setActiveSource(src);
+      setGalleryView('frames');
+      loadSourceFrames(src, 1, false);
+    }
+  }, [activeSource, exitToDefault, loadSourceFrames]);
+
+  const enterInitialView = useCallback(async (srcs) => {
+    setSources(srcs);
+    if (srcs.length >= 2) {
+      setGalleryView('folders');
+      setActiveSource(null);
+      setFrames([]);
+    } else {
+      const only = srcs[0];
+      const src = only
+        ? { kind: only.kind, video_id: only.video_id, name: only.name }
+        : { kind: 'all', name: 'Все кадры' };
+      setActiveSource(src);
+      setGalleryView('frames');
+      await loadSourceFrames(src, 1, false);
+    }
+  }, [loadSourceFrames, setFrames]);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,11 +212,9 @@ export default function ProjectWorkspace() {
         if (cancelled) return;
         setCurrentProject(projectRes.data);
         await loadClasses(projectId);
-        const frameList = await loadFrames(projectId);
-        if (frameList.length > 0) {
-          setFrames(frameList);
-          setCurrentFrameIndex(0);
-        }
+        const srcs = await loadSources();
+        if (cancelled) return;
+        await enterInitialView(srcs);
       } catch (e) {
         if (!cancelled) setError(e.message || 'Ошибка загрузки проекта');
       } finally {
@@ -116,6 +225,14 @@ export default function ProjectWorkspace() {
     init();
     return () => { cancelled = true; };
   }, [projectId]);
+
+  // Prefetch the next chunk as the user approaches the end of the loaded frames.
+  useEffect(() => {
+    if (galleryView === 'frames' && framesHasMore && !framesLoading
+        && currentFrameIndex >= frames.length - 3) {
+      loadMore();
+    }
+  }, [currentFrameIndex, frames.length, framesHasMore, framesLoading, galleryView, loadMore]);
 
   useEffect(() => {
     if (classes.length > 0 && !selectedClassId) {
@@ -159,8 +276,11 @@ export default function ProjectWorkspace() {
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         navigateFrame(1);
-      } else if (e.key === 'Delete') {
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Delete the selected annotation (selected by clicking it on the canvas
+        // or in the Аннотации panel).
         e.preventDefault();
+        deleteAnnotationRef.current?.();
       } else if (e.key >= '1' && e.key <= '9') {
         const idx = parseInt(e.key) - 1;
         if (classes[idx]) {
@@ -199,7 +319,9 @@ export default function ProjectWorkspace() {
   };
 
   const handleRefreshFrames = async () => {
-    await loadFrames(projectId);
+    // A new video adds a folder; re-evaluate folders vs. single-source view.
+    const srcs = await loadSources();
+    await enterInitialView(srcs);
     addToast('Список кадров обновлён', 'success');
   };
 
@@ -362,20 +484,26 @@ export default function ProjectWorkspace() {
               <button
                 key={cls.id}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all flex-shrink-0 ${
-                  selectedClassId === cls.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  activeSource?.kind === 'class' && activeSource.class_id === cls.id
+                    ? 'bg-purple-600 text-white ring-2 ring-purple-300/60'
+                    : selectedClassId === cls.id
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 }`}
                 onClick={() => {
+                  // If an object is selected, the chip reassigns its class.
                   if (applyClassRef.current?.(cls.id)) return;
+                  // Otherwise pick it as the drawing class AND filter the gallery
+                  // to frames containing it (click again to clear).
                   setSelectedClassId(cls.id);
+                  toggleClassFilter(cls.id, cls.name);
                 }}
                 onDoubleClick={() => {
                   setEditingClassId(cls.id);
                   setEditClassName(cls.name);
                   setTimeout(() => editInputRef.current?.focus(), 10);
                 }}
-                title={`${idx + 1}: ${cls.name} (двойной клик — переименовать)`}
+                title={`${idx + 1}: ${cls.name} — клик: фильтр по классу · двойной клик: переименовать`}
               >
                 <span className="w-3 h-3 rounded-sm border border-slate-500" style={{ backgroundColor: cls.color }} />
                 <span>{idx + 1}. {cls.name}</span>
@@ -390,11 +518,22 @@ export default function ProjectWorkspace() {
         {/* Left Panel: Frame Gallery */}
         <div style={{ width: leftWidth }} className="flex-shrink-0 relative">
           <FrameGallery
+            view={galleryView}
+            sources={sources}
             frames={frames}
             currentIndex={currentFrameIndex}
             projectId={projectId}
+            total={framesTotal}
+            hasMore={framesHasMore}
+            loading={framesLoading}
+            showBack={hasFolders && activeSource?.kind !== 'class'}
+            activeName={activeSource?.name || ''}
+            activeKind={activeSource?.kind || ''}
+            onOpenSource={openSource}
+            onBack={exitToDefault}
             onSelectFrame={setCurrentFrameIndex}
             onUploadClick={() => setShowVideoUploader(true)}
+            onLoadMore={loadMore}
           />
           <div
             className="resizable-handle"
@@ -405,14 +544,26 @@ export default function ProjectWorkspace() {
 
         {/* Center: Annotation Canvas */}
         <div className="flex-1 bg-[#0a0f1a] relative overflow-hidden">
-          {frames.length === 0 ? (
+          {galleryView === 'folders' ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <Film size={48} className="text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-400 mb-4">Нет кадров в проекте</p>
-                <button className="btn-primary" onClick={() => setShowVideoUploader(true)}>
-                  Загрузить видео
-                </button>
+                <p className="text-slate-400">Выберите папку слева</p>
+                <p className="text-slate-600 text-sm mt-1">Каждое видео — отдельная папка с кадрами</p>
+              </div>
+            </div>
+          ) : frames.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <Film size={48} className="text-slate-600 mx-auto mb-3" />
+                <p className="text-slate-400 mb-4">
+                  {framesLoading ? 'Загрузка кадров…' : 'Нет кадров в проекте'}
+                </p>
+                {!framesLoading && (
+                  <button className="btn-primary" onClick={() => setShowVideoUploader(true)}>
+                    Загрузить видео
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -428,6 +579,7 @@ export default function ProjectWorkspace() {
               applyClassRef={applyClassRef}
               saveRef={saveRef}
               selectAnnotationRef={selectAnnotationRef}
+              deleteAnnotationRef={deleteAnnotationRef}
               onRefreshAnnotations={() => {
                 // will be handled internally
               }}

@@ -150,6 +150,7 @@ export default function AnnotationCanvas({
   applyClassRef,
   saveRef,
   selectAnnotationRef,
+  deleteActiveRef,
 }) {
   const isSegment = taskType === 'segment';
   const isObb = taskType === 'obb';
@@ -228,6 +229,22 @@ export default function AnnotationCanvas({
       };
     }
   }, [selectAnnotationRef]);
+
+  // Delete the currently selected annotation (used by the Аннотации panel's
+  // Delete key). Re-bound when the frame changes so it never deletes against a
+  // stale frame. Returns true if something was deleted.
+  useEffect(() => {
+    if (!deleteActiveRef) return;
+    deleteActiveRef.current = () => {
+      const canvas = fabricRef.current;
+      const active = canvas?.getActiveObject();
+      if (active && active.annotationData) {
+        deleteAnnotation(active);
+        return true;
+      }
+      return false;
+    };
+  }, [deleteActiveRef, frame?.id]);
 
   useEffect(() => {
     if (applyClassRef) {
@@ -1351,13 +1368,9 @@ export default function AnnotationCanvas({
       }
     }
 
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      const active = canvas?.getActiveObject();
-      if (active && active.annotationData) {
-        deleteAnnotation(active);
-      }
-    }
+    // Delete is handled once at the workspace level (deleteActiveRef) so it
+    // works whether focus is on the canvas or the annotations panel, without
+    // double-firing.
 
     if (e.ctrlKey && e.key === 'z') {
       e.preventDefault();
