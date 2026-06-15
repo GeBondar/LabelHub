@@ -79,6 +79,8 @@ export default function ProjectWorkspace() {
   const saveRef = useRef(null);
   const selectAnnotationRef = useRef(null);
   const deleteAnnotationRef = useRef(null);
+  const undoRef = useRef(null);
+  const redoRef = useRef(null);
   const saveTimerRef = useRef(null);
   const [leftWidth, setLeftWidth] = useState(220);
   const [rightWidth, setRightWidth] = useState(280);
@@ -270,6 +272,17 @@ export default function ProjectWorkspace() {
       if (e.ctrlKey && e.key === 's') {
         e.preventDefault();
         handleManualSave();
+        return;
+      }
+
+      if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        if (e.shiftKey) redoRef.current?.(); else undoRef.current?.();
+        return;
+      }
+      if (e.ctrlKey && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        redoRef.current?.();
         return;
       }
 
@@ -583,6 +596,8 @@ export default function ProjectWorkspace() {
               saveRef={saveRef}
               selectAnnotationRef={selectAnnotationRef}
               deleteActiveRef={deleteAnnotationRef}
+              undoRef={undoRef}
+              redoRef={redoRef}
               onRefreshAnnotations={() => {
                 // will be handled internally
               }}

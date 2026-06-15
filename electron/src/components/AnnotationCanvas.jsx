@@ -151,6 +151,8 @@ export default function AnnotationCanvas({
   saveRef,
   selectAnnotationRef,
   deleteActiveRef,
+  undoRef,
+  redoRef,
 }) {
   const isSegment = taskType === 'segment';
   const isObb = taskType === 'obb';
@@ -199,6 +201,13 @@ export default function AnnotationCanvas({
   const { addToast, annotations: allAnnotations, updateAnnotationLocal, removeAnnotationLocal, setAnnotationsForFrame } = useApp();
 
   const currentAnnotations = frame ? (allAnnotations[frame.id] || annotations) : [];
+
+  // Bind undo/redo every render so they always see the current frame state
+  // (the workspace calls these on Ctrl+Z / Ctrl+Shift+Z regardless of focus).
+  useEffect(() => {
+    if (undoRef) undoRef.current = handleUndo;
+    if (redoRef) redoRef.current = handleRedo;
+  });
 
   useEffect(() => {
     if (saveRef) {
@@ -999,6 +1008,14 @@ export default function AnnotationCanvas({
     if (currentMode === MODES.DRAW) {
       // Segment projects build a polygon click-by-click instead of a box.
       if (isSegment) {
+        // When not mid-draft, clicking an existing object selects it (so it can
+        // be moved or deleted) instead of starting a new point.
+        const target = canvas.findTarget(evt, false);
+        if (polyPointsRef.current.length === 0 && target && target.annotationData) {
+          canvas.setActiveObject(target);
+          canvas.renderAll();
+          return;
+        }
         const pointer = canvas.getPointer(evt);
         addPolygonPoint(pointer);
         return;
@@ -1464,41 +1481,83 @@ export default function AnnotationCanvas({
     if (undoStackRef.current.length > 50) undoStackRef.current.shift();
   }
 
-  function handleUndo() {
+  function annDiffers(a, b) {
+    if (a.class_id !== b.class_id) return true;
+    for (const k of ['cx', 'cy', 'width', 'height', 'angle', 'heading']) {
+      if (Math.abs((a[k] || 0) - (b[k] || 0)) > 1e-9) return true;
+    }
+    return JSON.stringify(a.points || null) !== JSON.stringify(b.points || null);
+  }
+
+  // Make the backend + local state match a saved snapshot: delete annotations
+  // that were added since, re-create ones that were deleted (they get fresh
+  // ids), and restore geometry/class on those that still exist. This is what
+  // makes Ctrl+Z work for deletions, not just visually.
+  async function applySnapshot(target) {
+    const canvas = fabricRef.current;
+    if (!frame) return target;
+    const fid = frame.id;
+    const current = allAnnotations[fid] || [];
+    const curById = new Map(current.map((a) => [a.id, a]));
+    const tgtIds = new Set(target.map((a) => a.id));
+
+    for (const a of current) {
+      if (!tgtIds.has(a.id)) {
+        try { await apiClient.deleteAnnotation(a.id); } catch (e) { /* gone already */ }
+      }
+    }
+
+    const rebuilt = [];
+    for (const a of target) {
+      const payload = {
+        class_id: a.class_id,
+        cx: a.cx, cy: a.cy, width: a.width, height: a.height,
+        angle: a.angle ?? 0, heading: a.heading,
+        points: a.points || undefined,
+      };
+      if (curById.has(a.id)) {
+        // Only touch the backend if this object actually changed (e.g. a move
+        // being undone) — not for every object on every undo.
+        if (annDiffers(curById.get(a.id), a)) {
+          try { await apiClient.updateAnnotation(a.id, payload); } catch (e) { /* ignore */ }
+        }
+        rebuilt.push(a);
+      } else {
+        try {
+          const res = await apiClient.createAnnotation(fid, payload);
+          rebuilt.push(res.data);
+        } catch (e) {
+          rebuilt.push(a);
+        }
+      }
+    }
+
+    // The [currentAnnotations] redraw effect repaints the canvas from `rebuilt`.
+    setAnnotationsForFrame(fid, rebuilt);
+    return rebuilt;
+  }
+
+  async function handleUndo() {
     if (!frame || undoStackRef.current.length === 0) {
       addToast('Нечего отменять', 'info', 1500);
       return;
     }
-    const canvas = fabricRef.current;
     const prev = undoStackRef.current.pop();
     const current = allAnnotations[frame.id] || [];
     redoStackRef.current.push(JSON.parse(JSON.stringify(current)));
-    setAnnotationsForFrame(frame.id, prev);
-    if (canvas) {
-      const objs = canvas.getObjects().filter(o => o.annotationData);
-      objs.forEach(o => canvas.remove(o));
-      prev.forEach(ann => drawAnnotation(canvas, ann));
-      canvas.renderAll();
-    }
+    await applySnapshot(prev);
     addToast('Отменено', 'success', 1500);
   }
 
-  function handleRedo() {
+  async function handleRedo() {
     if (!frame || redoStackRef.current.length === 0) {
       addToast('Нечего повторить', 'info', 1500);
       return;
     }
-    const canvas = fabricRef.current;
     const next = redoStackRef.current.pop();
     const current = allAnnotations[frame.id] || [];
     undoStackRef.current.push(JSON.parse(JSON.stringify(current)));
-    setAnnotationsForFrame(frame.id, next);
-    if (canvas) {
-      const objs = canvas.getObjects().filter(o => o.annotationData);
-      objs.forEach(o => canvas.remove(o));
-      next.forEach(ann => drawAnnotation(canvas, ann));
-      canvas.renderAll();
-    }
+    await applySnapshot(next);
     addToast('Повторено', 'success', 1500);
   }
 
@@ -1528,18 +1587,9 @@ export default function AnnotationCanvas({
       return;
     }
 
-    // Delete is handled once at the workspace level (deleteActiveRef) so it
-    // works whether focus is on the canvas or the annotations panel, without
+    // Delete and Undo/Redo are handled once at the workspace level (via refs) so
+    // they work whether focus is on the canvas or the annotations panel, without
     // double-firing.
-
-    if (e.ctrlKey && e.key === 'z') {
-      e.preventDefault();
-      handleUndo();
-    }
-    if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
-      e.preventDefault();
-      handleRedo();
-    }
 
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
