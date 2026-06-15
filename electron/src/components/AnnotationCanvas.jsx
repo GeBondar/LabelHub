@@ -198,6 +198,7 @@ export default function AnnotationCanvas({
   const marqueeRectRef = useRef(null);
   const pendingDeleteRef = useRef(new Set());
   const [pendingDeleteCount, setPendingDeleteCount] = useState(0);
+  const [polyPointCount, setPolyPointCount] = useState(0);  // in-progress segment draft
   const { addToast, annotations: allAnnotations, updateAnnotationLocal, removeAnnotationLocal, setAnnotationsForFrame } = useApp();
 
   const currentAnnotations = frame ? (allAnnotations[frame.id] || annotations) : [];
@@ -254,6 +255,12 @@ export default function AnnotationCanvas({
     deleteActiveRef.current = () => {
       const canvas = fabricRef.current;
       if (!canvas) return false;
+      // 0) An unfinished polygon draft (the dashed lines): Delete abandons it.
+      if (polyPointsRef.current.length > 0) {
+        clearPolygonDraft();
+        addToast('Черновик полигона отменён', 'info', 1500);
+        return true;
+      }
       // 1) Region-delete: a marquee in DELETE mode marked several objects.
       if (pendingDeleteRef.current.size > 0) {
         deleteManyByIds([...pendingDeleteRef.current]);
@@ -353,6 +360,7 @@ export default function AnnotationCanvas({
     marqueeRectRef.current = null;
     pendingDeleteRef.current = new Set();
     setPendingDeleteCount(0);
+    setPolyPointCount(0);
 
     if (fabricRef.current) {
       fabricRef.current.dispose();
@@ -745,6 +753,7 @@ export default function AnnotationCanvas({
     polyPreviewRef.current = null;
     polyMarkersRef.current = [];
     polyPointsRef.current = [];
+    setPolyPointCount(0);
   }
 
   function renderPolygonDraft() {
@@ -801,6 +810,7 @@ export default function AnnotationCanvas({
       }
     }
     pts.push({ x: scenePt.x, y: scenePt.y });
+    setPolyPointCount(pts.length);
     renderPolygonDraft();
   }
 
@@ -1745,10 +1755,20 @@ export default function AnnotationCanvas({
           </button>
         )}
 
-        {isSegment && (
+        {isSegment && polyPointCount === 0 && (
           <span className="text-xs text-slate-400 ml-2 hidden lg:inline">
             Полигон: клик — точка, двойной клик / Enter — замкнуть
           </span>
+        )}
+        {isSegment && polyPointCount > 0 && (
+          <button
+            className="tool-btn text-red-300 hover:text-red-200 ml-1"
+            onClick={() => clearPolygonDraft()}
+            title="Отменить незавершённый полигон (Esc / Delete)"
+          >
+            <Trash2 size={14} />
+            <span className="text-xs ml-1">Отменить полигон ({polyPointCount})</span>
+          </button>
         )}
 
         <div className="flex-1" />
