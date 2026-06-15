@@ -2,7 +2,11 @@ import os
 
 
 class Config:
-    DATA_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    # Data root holds the SQLite DB, project frames, exports and training runs.
+    # Override with LABELHUB_DATA_DIR (used by tests and for multiple workspaces).
+    DATA_DIR: str = os.environ.get("LABELHUB_DATA_DIR") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+    )
     DATABASE_URL: str = f"sqlite+aiosqlite:///{os.path.join(DATA_DIR, 'labelhub.db')}"
     SAM2_CHECKPOINT: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "sam2_hiera_large.pt")
     SAM2_MODEL_CFG: str = "sam2_hiera_l.yaml"

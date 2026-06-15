@@ -43,8 +43,10 @@ async def lifespan(app: FastAPI):
     # by the time the user reaches for it, without delaying server startup or
     # blocking the event loop. Failures are captured in the service's load_state
     # and surfaced to the UI badge — they never break startup.
-    from backend.services.sam2_service import sam2_service
-    asyncio.create_task(asyncio.to_thread(sam2_service.warmup))
+    # Set LABELHUB_SKIP_WARMUP=1 to disable (used by tests to avoid loading torch).
+    if not os.environ.get("LABELHUB_SKIP_WARMUP"):
+        from backend.services.sam2_service import sam2_service
+        asyncio.create_task(asyncio.to_thread(sam2_service.warmup))
     yield
 
 
