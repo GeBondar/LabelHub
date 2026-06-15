@@ -225,7 +225,7 @@ export default function FrameGallery({
         {filteredFrames.length === 0 && !loading ? (
           <div className="flex flex-col items-center justify-center h-32 text-slate-600 gap-2">
             <ImageIcon size={24} />
-            <p className="text-xs">Нет кадров</p>
+            <p className="text-xs">{t('No frames')}</p>
           </div>
         ) : (
           filteredFrames.map((frame) => {
@@ -284,7 +284,7 @@ export default function FrameGallery({
           onClick={onUploadClick}
         >
           <Upload size={14} />
-          Загрузить видео
+          {t('Upload video')}
         </button>
       </div>
     </div>

@@ -28,6 +28,63 @@ import ClassManager from './ClassManager';
 import ExportPanel from './ExportPanel';
 import VideoUploader from './VideoUploader';
 import TrainingPanel from './TrainingPanel';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'All frames': 'Все кадры',
+  'Failed to load the project': 'Ошибка загрузки проекта',
+  'Selected class: {name}': 'Выбран класс: {name}',
+  'Annotations saved': 'Аннотации сохранены',
+  'Save error: {msg}': 'Ошибка сохранения: {msg}',
+  'Frame list refreshed': 'Список кадров обновлён',
+  'Loading project...': 'Загрузка проекта...',
+  'Load error': 'Ошибка загрузки',
+  'Retry': 'Повторить',
+  'Back to projects': 'Назад к проектам',
+  'Draw': 'Рисовать',
+  'Classes': 'Классы',
+  'Export': 'Экспорт',
+  'Training': 'Обучение',
+  '{n}: {name} — click: filter by class · double-click: rename':
+    '{n}: {name} — клик: фильтр по классу · двойной клик: переименовать',
+  'Select a folder on the left': 'Выберите папку слева',
+  'Each video is a separate folder of frames': 'Каждое видео — отдельная папка с кадрами',
+  'Loading frames…': 'Загрузка кадров…',
+  'No frames in the project': 'Нет кадров в проекте',
+  'Frame info': 'Информация о кадре',
+  'Frame:': 'Кадр:',
+  'Size:': 'Размер:',
+  'Status:': 'Статус:',
+  'Annotated': 'Размечен',
+  'Not annotated': 'Не размечен',
+  'Annotations:': 'Аннотаций:',
+  'No active frame': 'Нет активного кадра',
+  'Hotkeys': 'Горячие клавиши',
+  'Navigation': 'Навигация',
+  'Pick class': 'Выбор класса',
+  'Arrow direction ±90°': 'Направление стрелки ±90°',
+  'Rotate BOX ±90°': 'Поворот БОКСА ±90°',
+  'Rotate BOX ±5°': 'Поворот БОКСА ±5°',
+  'Double-click / Enter': 'Двойной клик / Enter',
+  'Close polygon': 'Замкнуть полигон',
+  'Delete object': 'Удалить объект',
+  'Undo / Redo': 'Отмена / Повтор',
+  'Wheel': 'Колёсико',
+  'Zoom': 'Масштаб',
+  'Pan': 'Панорама',
+  'Annotations ({n})': 'Аннотации ({n})',
+  'No annotations on this frame': 'Нет аннотаций на этом кадре',
+  'Class changed to: {name}': 'Класс изменён на: {name}',
+  'Failed to change class': 'Ошибка смены класса',
+  'Frame {i} / {n}': 'Кадр {i} / {n}',
+  'Mode: {mode}': 'Режим: {mode}',
+  'Drawing': 'Рисование',
+  'Editing': 'Редактирование',
+  'Deleting': 'Удаление',
+  'Saving...': 'Сохранение...',
+  'Auto-save': 'Автосохранение',
+  'Annotations are saved automatically': 'Разметка сохраняется автоматически',
+});
 
 function ToolbarButton({ icon: Icon, label, active, onClick, disabled, shortcut }) {
   return (
@@ -59,6 +116,7 @@ export default function ProjectWorkspace() {
     loadClasses,
     loadAnnotations,
     addToast,
+    t,
   } = useApp();
 
   const [loading, setLoading] = useState(true);
@@ -135,7 +193,7 @@ export default function ProjectWorkspace() {
         setCurrentFrameIndex(0);
       }
     } catch (e) {
-      addToast('Не удалось загрузить кадры', 'error');
+      addToast(t('Failed to load frames'), 'error');
     } finally {
       setFramesLoading(false);
     }
@@ -167,7 +225,7 @@ export default function ProjectWorkspace() {
     } else if (sources[0]) {
       openSource(sources[0]);
     } else {
-      const all = { kind: 'all', name: 'Все кадры' };
+      const all = { kind: 'all', name: t('All frames') };
       setActiveSource(all);
       setGalleryView('frames');
       loadSourceFrames(all, 1, false);
@@ -197,7 +255,7 @@ export default function ProjectWorkspace() {
       const only = srcs[0];
       const src = only
         ? { kind: only.kind, video_id: only.video_id, name: only.name }
-        : { kind: 'all', name: 'Все кадры' };
+        : { kind: 'all', name: t('All frames') };
       setActiveSource(src);
       setGalleryView('frames');
       await loadSourceFrames(src, 1, false);
@@ -219,7 +277,7 @@ export default function ProjectWorkspace() {
         if (cancelled) return;
         await enterInitialView(srcs);
       } catch (e) {
-        if (!cancelled) setError(e.message || 'Ошибка загрузки проекта');
+        if (!cancelled) setError(e.message || t('Failed to load the project'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -301,7 +359,7 @@ export default function ProjectWorkspace() {
         const idx = parseInt(e.key) - 1;
         if (classes[idx]) {
           setSelectedClassId(classes[idx].id);
-          addToast(`Выбран класс: ${classes[idx].name}`, 'info', 1500);
+          addToast(t('Selected class: {name}', { name: classes[idx].name }), 'info', 1500);
         }
       }
     }
@@ -326,9 +384,9 @@ export default function ProjectWorkspace() {
         await apiClient.updateFrameStatus(currentFrame.id, true);
         setFrames(prev => prev.map(f => f.id === currentFrame.id ? { ...f, is_labeled: true } : f));
       }
-      addToast('Аннотации сохранены', 'success');
+      addToast(t('Annotations saved'), 'success');
     } catch (e) {
-      addToast('Ошибка сохранения: ' + (e.message || ''), 'error');
+      addToast(t('Save error: {msg}', { msg: e.message || '' }), 'error');
     } finally {
       setSaving(false);
     }
@@ -338,7 +396,7 @@ export default function ProjectWorkspace() {
     // A new video adds a folder; re-evaluate folders vs. single-source view.
     const srcs = await loadSources();
     await enterInitialView(srcs);
-    addToast('Список кадров обновлён', 'success');
+    addToast(t('Frame list refreshed'), 'success');
   };
 
   const handleMouseMove = useCallback((e) => {
@@ -371,7 +429,7 @@ export default function ProjectWorkspace() {
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 size={40} className="loading-spinner text-blue-400" />
-          <p className="text-slate-400">Загрузка проекта...</p>
+          <p className="text-slate-400">{t('Loading project...')}</p>
         </div>
       </div>
     );
@@ -382,14 +440,14 @@ export default function ProjectWorkspace() {
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center max-w-md">
           <AlertCircle size={48} className="text-red-400" />
-          <h2 className="text-xl font-bold">Ошибка загрузки</h2>
+          <h2 className="text-xl font-bold">{t('Load error')}</h2>
           <p className="text-slate-400">{error}</p>
           <div className="flex gap-3">
             <button className="btn-secondary flex items-center gap-2" onClick={() => navigate('/')}>
-              <ArrowLeft size={16} /> Назад
+              <ArrowLeft size={16} /> {t('Back')}
             </button>
             <button className="btn-primary" onClick={() => window.location.reload()}>
-              Повторить
+              {t('Retry')}
             </button>
           </div>
         </div>
@@ -406,7 +464,7 @@ export default function ProjectWorkspace() {
         <button
           className="tool-btn flex items-center gap-1.5"
           onClick={() => navigate('/')}
-          title="Назад к проектам"
+          title={t('Back to projects')}
         >
           <ArrowLeft size={16} />
         </button>
@@ -424,19 +482,19 @@ export default function ProjectWorkspace() {
 
         <ToolbarButton
           icon={canvasMode === 'draw' ? Grid3X3 : Grid3X3}
-          label="Рисовать"
+          label={t('Draw')}
           active={canvasMode === 'draw'}
           onClick={() => setCanvasMode('draw')}
         />
         <ToolbarButton
           icon={Eye}
-          label="Редактировать"
+          label={t('Edit')}
           active={canvasMode === 'edit'}
           onClick={() => setCanvasMode('edit')}
         />
         <ToolbarButton
           icon={EyeOff}
-          label="Удалить"
+          label={t('Delete')}
           active={canvasMode === 'delete'}
           onClick={() => setCanvasMode('delete')}
         />
@@ -445,19 +503,19 @@ export default function ProjectWorkspace() {
 
         <ToolbarButton
           icon={Layers}
-          label="Классы"
+          label={t('Classes')}
           onClick={() => setShowClassManager(true)}
         />
 
         <ToolbarButton
           icon={Download}
-          label="Экспорт"
+          label={t('Export')}
           onClick={() => setShowExport(true)}
         />
 
         <ToolbarButton
           icon={Activity}
-          label="Обучение"
+          label={t('Training')}
           onClick={() => setShowTraining(true)}
         />
 
@@ -465,7 +523,7 @@ export default function ProjectWorkspace() {
 
         <ToolbarButton
           icon={Save}
-          label="Сохранить"
+          label={t('Save')}
           onClick={handleManualSave}
           shortcut="Ctrl+S"
           disabled={saving}
@@ -519,7 +577,7 @@ export default function ProjectWorkspace() {
                   setEditClassName(cls.name);
                   setTimeout(() => editInputRef.current?.focus(), 10);
                 }}
-                title={`${idx + 1}: ${cls.name} — клик: фильтр по классу · двойной клик: переименовать`}
+                title={t('{n}: {name} — click: filter by class · double-click: rename', { n: idx + 1, name: cls.name })}
               >
                 <span className="w-3 h-3 rounded-sm border border-slate-500" style={{ backgroundColor: cls.color }} />
                 <span>{idx + 1}. {cls.name}</span>
@@ -564,8 +622,8 @@ export default function ProjectWorkspace() {
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <Film size={48} className="text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-400">Выберите папку слева</p>
-                <p className="text-slate-600 text-sm mt-1">Каждое видео — отдельная папка с кадрами</p>
+                <p className="text-slate-400">{t('Select a folder on the left')}</p>
+                <p className="text-slate-600 text-sm mt-1">{t('Each video is a separate folder of frames')}</p>
               </div>
             </div>
           ) : frames.length === 0 ? (
@@ -573,11 +631,11 @@ export default function ProjectWorkspace() {
               <div className="text-center">
                 <Film size={48} className="text-slate-600 mx-auto mb-3" />
                 <p className="text-slate-400 mb-4">
-                  {framesLoading ? 'Загрузка кадров…' : 'Нет кадров в проекте'}
+                  {framesLoading ? t('Loading frames…') : t('No frames in the project')}
                 </p>
                 {!framesLoading && (
                   <button className="btn-primary" onClick={() => setShowVideoUploader(true)}>
-                    Загрузить видео
+                    {t('Upload video')}
                   </button>
                 )}
               </div>
@@ -622,62 +680,62 @@ export default function ProjectWorkspace() {
           />
           <div className="h-full flex flex-col">
             <div className="p-3 border-b border-slate-700">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Информация о кадре</h3>
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t('Frame info')}</h3>
               {currentFrame ? (
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Кадр:</span>
+                    <span className="text-slate-400">{t('Frame:')}</span>
                     <span className="text-slate-200 font-mono">{currentFrame.frame_index}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Размер:</span>
+                    <span className="text-slate-400">{t('Size:')}</span>
                     <span className="text-slate-200 font-mono">{currentFrame.width}x{currentFrame.height}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Статус:</span>
+                    <span className="text-slate-400">{t('Status:')}</span>
                     <span className={currentFrame.is_labeled ? 'text-green-400' : 'text-slate-500'}>
-                      {currentFrame.is_labeled ? 'Размечен' : 'Не размечен'}
+                      {currentFrame.is_labeled ? t('Annotated') : t('Not annotated')}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Аннотаций:</span>
+                    <span className="text-slate-400">{t('Annotations:')}</span>
                     <span className="text-slate-200 font-mono">{currentAnnotations.length}</span>
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-slate-500">Нет активного кадра</p>
+                <p className="text-sm text-slate-500">{t('No active frame')}</p>
               )}
             </div>
 
             <div className="p-3 border-b border-slate-700">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Горячие клавиши</h3>
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t('Hotkeys')}</h3>
               <div className="space-y-1 text-xs text-slate-400">
-                <div className="flex justify-between"><span>← →</span><span>Навигация</span></div>
-                <div className="flex justify-between"><span>1-9</span><span>Выбор класса</span></div>
+                <div className="flex justify-between"><span>← →</span><span>{t('Navigation')}</span></div>
+                <div className="flex justify-between"><span>1-9</span><span>{t('Pick class')}</span></div>
                 {taskType === 'obb' && (
                   <>
-                    <div className="flex justify-between"><span>F / Shift+F</span><span>Направление стрелки ±90°</span></div>
-                    <div className="flex justify-between"><span>R / Shift+R</span><span>Поворот БОКСА ±90°</span></div>
-                    <div className="flex justify-between"><span>Q / E</span><span>Поворот БОКСА ±5°</span></div>
+                    <div className="flex justify-between"><span>F / Shift+F</span><span>{t('Arrow direction ±90°')}</span></div>
+                    <div className="flex justify-between"><span>R / Shift+R</span><span>{t('Rotate BOX ±90°')}</span></div>
+                    <div className="flex justify-between"><span>Q / E</span><span>{t('Rotate BOX ±5°')}</span></div>
                   </>
                 )}
                 {taskType === 'segment' && (
-                  <div className="flex justify-between"><span>Двойной клик / Enter</span><span>Замкнуть полигон</span></div>
+                  <div className="flex justify-between"><span>{t('Double-click / Enter')}</span><span>{t('Close polygon')}</span></div>
                 )}
-                <div className="flex justify-between"><span>Delete</span><span>Удалить объект</span></div>
-                <div className="flex justify-between"><span>Ctrl+S</span><span>Сохранить</span></div>
-                <div className="flex justify-between"><span>Ctrl+Z / Shift+Z</span><span>Отмена / Повтор</span></div>
-                <div className="flex justify-between"><span>Колёсико</span><span>Масштаб</span></div>
-                <div className="flex justify-between"><span>Alt+Drag</span><span>Панорама</span></div>
+                <div className="flex justify-between"><span>Delete</span><span>{t('Delete object')}</span></div>
+                <div className="flex justify-between"><span>Ctrl+S</span><span>{t('Save')}</span></div>
+                <div className="flex justify-between"><span>Ctrl+Z / Shift+Z</span><span>{t('Undo / Redo')}</span></div>
+                <div className="flex justify-between"><span>{t('Wheel')}</span><span>{t('Zoom')}</span></div>
+                <div className="flex justify-between"><span>Alt+Drag</span><span>{t('Pan')}</span></div>
               </div>
             </div>
 
             <div className="p-3 flex-1 overflow-y-auto">
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                Аннотации ({currentAnnotations.length})
+                {t('Annotations ({n})', { n: currentAnnotations.length })}
               </h3>
               {currentAnnotations.length === 0 ? (
-                <p className="text-xs text-slate-500">Нет аннотаций на этом кадре</p>
+                <p className="text-xs text-slate-500">{t('No annotations on this frame')}</p>
               ) : (
                 <div className="space-y-1">
                   {currentAnnotations.map((ann, idx) => {
@@ -727,9 +785,9 @@ export default function ProjectWorkspace() {
                                       const current = prev[currentFrame?.id] || [];
                                       return { ...prev, [currentFrame?.id]: current.map(a => a.id === ann.id ? { ...a, class_id: c.id } : a) };
                                     });
-                                    addToast(`Класс изменён на: ${c.name}`, 'success', 1500);
+                                    addToast(t('Class changed to: {name}', { name: c.name }), 'success', 1500);
                                   } catch {
-                                    addToast('Ошибка смены класса', 'error');
+                                    addToast(t('Failed to change class'), 'error');
                                   }
                                   setChangingAnnId(null);
                                 }}
@@ -753,24 +811,24 @@ export default function ProjectWorkspace() {
       {/* Bottom Status Bar */}
       <div className="h-8 bg-slate-800 border-t border-slate-700 flex items-center px-3 gap-4 text-xs text-slate-400 flex-shrink-0">
         <span>
-          Кадр {frames.length > 0 ? currentFrameIndex + 1 : 0} / {frames.length}
+          {t('Frame {i} / {n}', { i: frames.length > 0 ? currentFrameIndex + 1 : 0, n: frames.length })}
         </span>
         <span className="h-4 w-px bg-slate-700" />
         <span>
-          Аннотаций: {currentAnnotations.length}
+          {t('Annotations:')} {currentAnnotations.length}
         </span>
         <span className="h-4 w-px bg-slate-700" />
         <span>
-          Режим: {canvasMode === 'draw' ? 'Рисование' : canvasMode === 'edit' ? 'Редактирование' : 'Удаление'}
+          {t('Mode: {mode}', { mode: canvasMode === 'draw' ? t('Drawing') : canvasMode === 'edit' ? t('Editing') : t('Deleting') })}
         </span>
         <span className="flex-1" />
         {saving ? (
           <span className="flex items-center gap-1 text-blue-400">
-            <Loader2 size={12} className="loading-spinner" /> Сохранение...
+            <Loader2 size={12} className="loading-spinner" /> {t('Saving...')}
           </span>
         ) : (
-          <span className="flex items-center gap-1 text-green-500/80" title="Разметка сохраняется автоматически">
-            <CheckCircle size={12} /> Автосохранение
+          <span className="flex items-center gap-1 text-green-500/80" title={t('Annotations are saved automatically')}>
+            <CheckCircle size={12} /> {t('Auto-save')}
           </span>
         )}
       </div>
