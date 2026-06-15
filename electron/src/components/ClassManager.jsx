@@ -14,6 +14,28 @@ import {
 } from 'lucide-react';
 import { useApp } from '../App';
 import apiClient from '../api/client';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'Class manager': 'Управление классами',
+  'Add class': 'Добавить класс',
+  'No classes': 'Нет классов',
+  'Class name...': 'Название класса...',
+  'Random color': 'Случайный цвет',
+  'Add': 'Добавить',
+  'Close': 'Закрыть',
+  'Edit': 'Редактировать',
+  'Delete': 'Удалить',
+  'Enter a class name': 'Введите название класса',
+  'Class added': 'Класс добавлен',
+  'Add failed': 'Ошибка добавления',
+  'Delete this class? Existing annotations of this class will be removed.':
+    'Удалить класс? Существующие аннотации этого класса будут удалены.',
+  'Class deleted': 'Класс удалён',
+  'Failed to delete class': 'Ошибка удаления класса',
+  'Class updated': 'Класс обновлён',
+  'Failed to update class': 'Ошибка обновления класса',
+});
 
 const PRESET_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
@@ -148,7 +170,7 @@ function ColorPicker({ value, onChange }) {
 }
 
 export default function ClassManager({ projectId, onClose }) {
-  const { classes, loadClasses, addToast } = useApp();
+  const { classes, loadClasses, addToast, t } = useApp();
   const [localClasses, setLocalClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -172,7 +194,7 @@ export default function ClassManager({ projectId, onClose }) {
       setLocalClasses(list);
       setNewColor(randomPleasantColor(list.map((c) => c.color)));
     } catch {
-      addToast('Ошибка загрузки классов', 'error');
+      addToast(t('Failed to load classes'), 'error');
     } finally {
       setLoading(false);
     }
@@ -180,7 +202,7 @@ export default function ClassManager({ projectId, onClose }) {
 
   const handleAdd = async () => {
     if (!newName.trim()) {
-      setError('Введите название класса');
+      setError(t('Enter a class name'));
       return;
     }
     setSaving(true);
@@ -195,23 +217,23 @@ export default function ClassManager({ projectId, onClose }) {
       setNewName('');
       setNewColor(randomPleasantColor(updated.map((c) => c.color)));
       await loadClasses(projectId);
-      addToast('Класс добавлен', 'success');
+      addToast(t('Class added'), 'success');
     } catch (err) {
-      setError(err.message || 'Ошибка добавления');
+      setError(err.message || t('Add failed'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (classId) => {
-    if (!confirm('Удалить класс? Существующие аннотации этого класса будут удалены.')) return;
+    if (!confirm(t('Delete this class? Existing annotations of this class will be removed.'))) return;
     try {
       await apiClient.deleteClass(projectId, classId);
       setLocalClasses(localClasses.filter((c) => c.id !== classId));
       await loadClasses(projectId);
-      addToast('Класс удалён', 'success');
+      addToast(t('Class deleted'), 'success');
     } catch (err) {
-      addToast('Ошибка удаления класса', 'error');
+      addToast(t('Failed to delete class'), 'error');
     }
   };
 
@@ -232,9 +254,9 @@ export default function ClassManager({ projectId, onClose }) {
       setLocalClasses(localClasses.map((c) => (c.id === classId ? res.data : c)));
       setEditingId(null);
       await loadClasses(projectId);
-      addToast('Класс обновлён', 'success');
+      addToast(t('Class updated'), 'success');
     } catch (err) {
-      addToast('Ошибка обновления класса', 'error');
+      addToast(t('Failed to update class'), 'error');
     } finally {
       setSaving(false);
     }
@@ -250,7 +272,7 @@ export default function ClassManager({ projectId, onClose }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Palette size={20} className="text-blue-400" />
-            Управление классами
+            {t('Class manager')}
           </h2>
           <button className="p-1 hover:bg-slate-700 rounded-lg transition" onClick={onClose}>
             <X size={18} />
@@ -265,7 +287,7 @@ export default function ClassManager({ projectId, onClose }) {
           <>
             <div className="space-y-1 max-h-64 overflow-y-auto mb-4">
               {localClasses.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-4">Нет классов</p>
+                <p className="text-sm text-slate-500 text-center py-4">{t('No classes')}</p>
               ) : (
                 localClasses.map((cls) => (
                   <div
@@ -306,14 +328,14 @@ export default function ClassManager({ projectId, onClose }) {
                         <button
                           className="p-1 text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition rounded hover:bg-slate-600"
                           onClick={() => startEdit(cls)}
-                          title="Редактировать"
+                          title={t('Edit')}
                         >
                           <Edit3 size={12} />
                         </button>
                         <button
                           className="p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition rounded hover:bg-red-900/30"
                           onClick={() => handleDelete(cls.id)}
-                          title="Удалить"
+                          title={t('Delete')}
                         >
                           <Trash2 size={12} />
                         </button>
@@ -325,14 +347,14 @@ export default function ClassManager({ projectId, onClose }) {
             </div>
 
             <div className="border-t border-slate-700 pt-4">
-              <h3 className="text-sm font-medium text-slate-400 mb-2">Добавить класс</h3>
+              <h3 className="text-sm font-medium text-slate-400 mb-2">{t('Add class')}</h3>
               <div className="flex items-center gap-2">
                 <ColorPicker value={newColor} onChange={setNewColor} />
                 <button
                   type="button"
                   className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition flex-shrink-0"
                   onClick={() => setNewColor(randomPleasantColor(localClasses.map((c) => c.color)))}
-                  title="Случайный цвет"
+                  title={t('Random color')}
                 >
                   <Shuffle size={16} />
                 </button>
@@ -340,7 +362,7 @@ export default function ClassManager({ projectId, onClose }) {
                   className="input-field flex-1 text-sm py-1.5"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Название класса..."
+                  placeholder={t('Class name...')}
                   onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
                 />
                 <button
@@ -349,7 +371,7 @@ export default function ClassManager({ projectId, onClose }) {
                   disabled={saving || !newName.trim()}
                 >
                   <Plus size={14} />
-                  Добавить
+                  {t('Add')}
                 </button>
               </div>
               {error && (
@@ -362,7 +384,7 @@ export default function ClassManager({ projectId, onClose }) {
         )}
 
         <div className="flex justify-end mt-4">
-          <button className="btn-secondary" onClick={onClose}>Закрыть</button>
+          <button className="btn-secondary" onClick={onClose}>{t('Close')}</button>
         </div>
       </div>
     </div>

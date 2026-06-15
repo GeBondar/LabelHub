@@ -1,20 +1,18 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
 import {
-  Home,
-  FolderOpen,
-  Settings,
   HardDrive,
-  Wifi,
-  WifiOff,
-  ChevronLeft,
   Database,
   Boxes,
+  Globe,
+  Check,
+  ChevronDown,
 } from 'lucide-react';
 import ProjectList from './components/ProjectList';
 import ProjectWorkspace from './components/ProjectWorkspace';
 import ModelList from './components/ModelList';
 import apiClient from './api/client';
+import { makeT, loadLang, saveLang, LANGUAGES } from './i18n';
 
 export const AppContext = createContext(null);
 
@@ -35,6 +33,10 @@ function AppProvider({ children }) {
   const [backendStatus, setBackendStatus] = useState('checking');
   const [toasts, setToasts] = useState([]);
   const toastIdRef = useRef(0);
+
+  const [lang, setLangState] = useState(loadLang);
+  const t = useMemo(() => makeT(lang), [lang]);
+  const setLang = useCallback((l) => { setLangState(l); saveLang(l); }, []);
 
   const addToast = useCallback((message, type = 'info', duration = 4000) => {
     const id = ++toastIdRef.current;
@@ -73,12 +75,12 @@ function AppProvider({ children }) {
   }, [checkBackend, addToast]);
 
   useEffect(() => {
-    const handleBackendError = (msg) => addToast(`Ошибка сервера: ${msg}`, 'error');
+    const handleBackendError = (msg) => addToast(t('Server error: {msg}', { msg }), 'error');
     if (window.electronAPI) {
       window.electronAPI.onBackendError(handleBackendError);
       return () => window.electronAPI.removeBackendErrorListener();
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true);
@@ -86,20 +88,20 @@ function AppProvider({ children }) {
       const res = await apiClient.getProjects();
       setProjects(res.data || []);
     } catch (e) {
-      addToast('Не удалось загрузить проекты', 'error');
+      addToast(t('Failed to load projects'), 'error');
     } finally {
       setProjectsLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const loadClasses = useCallback(async (projectId) => {
     try {
       const res = await apiClient.getClasses(projectId);
       setClasses(res.data || []);
     } catch {
-      addToast('Не удалось загрузить классы', 'error');
+      addToast(t('Failed to load classes'), 'error');
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const loadFrames = useCallback(async (projectId) => {
     try {
@@ -109,10 +111,10 @@ function AppProvider({ children }) {
       setCurrentFrameIndex(0);
       return frameList;
     } catch (e) {
-      addToast('Не удалось загрузить кадры', 'error');
+      addToast(t('Failed to load frames'), 'error');
       return [];
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const loadAnnotations = useCallback(async (frameId) => {
     try {
@@ -167,6 +169,9 @@ function AppProvider({ children }) {
     classes,
     setClasses,
     backendStatus,
+    lang,
+    setLang,
+    t,
     toasts,
     addToast,
     removeToast,
@@ -184,6 +189,7 @@ function AppProvider({ children }) {
 
 function MainNav() {
   const location = useLocation();
+  const { t } = useApp();
   // Hide tabs inside the per-project workspace to keep its own toolbar clean.
   if (location.pathname.startsWith('/project/')) return null;
   const linkClass = ({ isActive }) =>
@@ -194,30 +200,70 @@ function MainNav() {
     <nav className="flex items-center gap-1">
       <NavLink to="/" end className={linkClass}>
         <Database size={15} />
-        Датасеты
+        {t('Datasets')}
       </NavLink>
       <NavLink to="/models" className={linkClass}>
         <Boxes size={15} />
-        Модели
+        {t('Models')}
       </NavLink>
     </nav>
   );
 }
 
-function StatusIndicator() {
-  const { backendStatus } = useApp();
-  const statusConfig = {
-    connected: { icon: Wifi, color: 'text-green-400', text: 'Сервер подключён' },
-    disconnected: { icon: WifiOff, color: 'text-red-400', text: 'Сервер отключён' },
-    checking: { icon: WifiOff, color: 'text-yellow-400', text: 'Проверка...' },
-  };
-  const config = statusConfig[backendStatus] || statusConfig.checking;
-  const Icon = config.icon;
+function LanguageSwitcher() {
+  const { lang, setLang, t } = useApp();
+  const [open, setOpen] = useState(false);
+  const current = LANGUAGES.find((l) => l.id === lang) || LANGUAGES[0];
   return (
-    <div className={`flex items-center gap-1.5 text-xs ${config.color}`}>
-      <Icon size={14} className={backendStatus === 'checking' ? 'loading-spinner' : ''} />
-      <span className="hidden sm:inline">{config.text}</span>
+    <div className="relative">
+      <button
+        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition"
+        onClick={() => setOpen((v) => !v)}
+        title={t('Language')}
+      >
+        <Globe size={15} />
+        <span className="font-medium">{current.short}</span>
+        <ChevronDown size={13} className="text-slate-500" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-1 w-36 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 z-50">
+            {LANGUAGES.map((l) => (
+              <button
+                key={l.id}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm transition hover:bg-slate-700 ${
+                  l.id === lang ? 'text-blue-400' : 'text-slate-300'
+                }`}
+                onClick={() => { setLang(l.id); setOpen(false); }}
+              >
+                <span className="flex-1 text-left">{l.label}</span>
+                {l.id === lang && <Check size={14} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function AppHeader() {
+  const { t } = useApp();
+  return (
+    <header className="h-12 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-4 flex-shrink-0 z-30">
+      <div className="flex items-center gap-3">
+        <HardDrive size={20} className="text-blue-400" />
+        <h1 className="text-sm font-bold tracking-wide text-slate-200">LabelHub</h1>
+        <span className="text-xs text-slate-500 hidden sm:inline">
+          {t('Annotation, training and model storage tool')}
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <MainNav />
+        <LanguageSwitcher />
+      </div>
+    </header>
   );
 }
 
@@ -278,21 +324,7 @@ export default function App() {
       <AppProvider>
         <Router>
           <div className="h-full flex flex-col">
-            <header className="h-12 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-4 flex-shrink-0 z-30">
-              <div className="flex items-center gap-3">
-                <HardDrive size={20} className="text-blue-400" />
-                <h1 className="text-sm font-bold tracking-wide text-slate-200">
-                  LabelHub
-                </h1>
-                <span className="text-xs text-slate-500 hidden sm:inline">
-                  Инструмент аннотации, обучения и хранения моделей
-                </span>
-              </div>
-              <div className="flex items-center gap-4">
-                <MainNav />
-                <StatusIndicator />
-              </div>
-            </header>
+            <AppHeader />
             <main className="flex-1 overflow-hidden">
               <Routes>
                 <Route path="/" element={<ProjectList />} />
