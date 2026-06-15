@@ -38,6 +38,45 @@ async def _migrate(conn):
     if "val_count" not in run_columns:
         await conn.execute(text("ALTER TABLE training_runs ADD COLUMN val_count INTEGER DEFAULT 0"))
 
+    await _renumber_frames_once(conn)
+
+
+async def _renumber_frames_once(conn):
+    """One-time data migration (guarded by PRAGMA user_version): renumber each
+    project's frames so they run sequentially across videos — video 1 gets
+    0..N, video 2 gets N+1.., and imported frames come last. The old code
+    numbered every video from 0, which collided and interleaved them in the
+    gallery. Annotations reference frame_id (not frame_index), so this is safe.
+    """
+    from sqlalchemy import text
+
+    version = (await conn.execute(text("PRAGMA user_version"))).scalar() or 0
+    if version >= 1:
+        return
+
+    await conn.execute(text(
+        """
+        CREATE TEMP TABLE _renum AS
+        SELECT f.id AS fid,
+               ROW_NUMBER() OVER (
+                   PARTITION BY f.project_id
+                   ORDER BY (v.created_at IS NULL), v.created_at, f.video_id,
+                            f.frame_index, f.id
+               ) - 1 AS nidx
+        FROM frames f
+        LEFT JOIN video_files v ON f.video_id = v.id
+        """
+    ))
+    await conn.execute(text(
+        """
+        UPDATE frames
+        SET frame_index = (SELECT nidx FROM _renum WHERE _renum.fid = frames.id)
+        WHERE id IN (SELECT fid FROM _renum)
+        """
+    ))
+    await conn.execute(text("DROP TABLE _renum"))
+    await conn.execute(text("PRAGMA user_version = 1"))
+
 
 async def init_db():
     from backend.models.project import Project, VideoFile, ClassLabel

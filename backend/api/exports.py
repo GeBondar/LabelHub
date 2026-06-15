@@ -385,6 +385,14 @@ async def _import_yolo(project_id: int, base_path: str, data: ImportDirRequest, 
     imported = 0
     task_id = f"import_{project_id}"
 
+    # Continue frame numbering after any frames already in the project (global
+    # sequential numbering). For a fresh import project this base is 0.
+    from sqlalchemy import func as _sa_func
+    base_idx = (await db.execute(
+        select(_sa_func.max(Frame.frame_index)).where(Frame.project_id == project_id)
+    )).scalar()
+    base_idx = (base_idx + 1) if base_idx is not None else 0
+
     yaml_names = _parse_data_yaml_names(base_path)
 
     by_index = await _resolve_import_classes(project_id, db)
@@ -467,7 +475,7 @@ async def _import_yolo(project_id: int, base_path: str, data: ImportDirRequest, 
 
             frame = Frame(
                 project_id=project_id,
-                frame_index=imported,
+                frame_index=base_idx + imported,
                 image_path=dest_path,
                 width=w,
                 height=h,

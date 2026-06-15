@@ -233,20 +233,36 @@ async def list_project_frames(
     project_id: int,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=500),
+    video_id: Optional[int] = Query(default=None, description="Only frames of this video"),
+    imported: bool = Query(default=False, description="Only imported frames (no video)"),
+    class_id: Optional[int] = Query(default=None, description="Only frames containing this class"),
     db: AsyncSession = Depends(get_db),
 ):
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # Optional source/content filter. class_id (whole-project, for analysing a
+    # class) takes precedence over the per-folder video_id / imported filters.
+    conds = []
+    if class_id is not None:
+        from backend.models.annotation import OrientedBBox
+        conds.append(Frame.id.in_(
+            select(OrientedBBox.frame_id).where(OrientedBBox.class_id == class_id)
+        ))
+    elif video_id is not None:
+        conds.append(Frame.video_id == video_id)
+    elif imported:
+        conds.append(Frame.video_id.is_(None))
+
     total = (await db.execute(
-        select(func.count(Frame.id)).where(Frame.project_id == project_id)
+        select(func.count(Frame.id)).where(Frame.project_id == project_id, *conds)
     )).scalar() or 0
 
     offset = (page - 1) * page_size
     result = await db.execute(
         select(Frame)
-        .where(Frame.project_id == project_id)
+        .where(Frame.project_id == project_id, *conds)
         .order_by(Frame.frame_index)
         .offset(offset)
         .limit(page_size)
@@ -271,3 +287,53 @@ async def list_project_frames(
         page=page,
         page_size=page_size,
     )
+
+
+class SourceOut(BaseModel):
+    kind: str                       # "video" | "imported"
+    video_id: Optional[int]
+    name: str
+    frame_count: int
+    labeled_count: int
+    thumb: Optional[str]            # image_path of the first frame, for the folder thumbnail
+
+
+@router.get("/{project_id}/sources", response_model=list[SourceOut])
+async def list_sources(project_id: int, db: AsyncSession = Depends(get_db)):
+    """Folder list for the gallery: one entry per video (in upload order) plus an
+    'Импорт' folder for frames that came from a dataset import (no video).
+    Empty groups are omitted."""
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    async def group(video_id, name, kind):
+        cond = (Frame.video_id == video_id) if video_id is not None else Frame.video_id.is_(None)
+        count = (await db.execute(
+            select(func.count(Frame.id)).where(Frame.project_id == project_id, cond)
+        )).scalar() or 0
+        if count == 0:
+            return None
+        labeled = (await db.execute(
+            select(func.count(Frame.id)).where(Frame.project_id == project_id, cond, Frame.is_labeled == True)
+        )).scalar() or 0
+        thumb = (await db.execute(
+            select(Frame.image_path).where(Frame.project_id == project_id, cond)
+            .order_by(Frame.frame_index).limit(1)
+        )).scalar()
+        return SourceOut(kind=kind, video_id=video_id, name=name,
+                         frame_count=count, labeled_count=labeled, thumb=thumb)
+
+    videos = (await db.execute(
+        select(VideoFile).where(VideoFile.project_id == project_id).order_by(VideoFile.created_at)
+    )).scalars().all()
+
+    sources = []
+    for v in videos:
+        g = await group(v.id, v.original_filename, "video")
+        if g:
+            sources.append(g)
+    imported = await group(None, "Импорт", "imported")
+    if imported:
+        sources.append(imported)
+    return sources

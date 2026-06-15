@@ -167,7 +167,7 @@ class VideoProcessor:
         )
 
         from backend.models.project import Project, VideoFile
-        from sqlalchemy import select as sa_select
+        from sqlalchemy import select as sa_select, func as sa_func
 
         video_result = await db_session.execute(
             sa_select(VideoFile).where(VideoFile.id == video_id)
@@ -175,12 +175,20 @@ class VideoProcessor:
         video_record = video_result.scalar()
         project_id_val = video_record.project_id if video_record else None
 
+        # Continue numbering after the project's highest existing frame_index, so
+        # frames from a second video are numbered N+1.. instead of colliding with
+        # the first video's 0..N (which would interleave them in the gallery).
+        base_idx = (await db_session.execute(
+            sa_select(sa_func.max(Frame.frame_index)).where(Frame.project_id == project_id_val)
+        )).scalar()
+        base_idx = (base_idx + 1) if base_idx is not None else 0
+
         for idx, filename in enumerate(frame_files):
             frame_path = os.path.join(output_dir, filename)
             frame = Frame(
                 project_id=project_id_val,
                 video_id=video_id,
-                frame_index=idx,
+                frame_index=base_idx + idx,
                 image_path=frame_path,
                 width=output_width,
                 height=output_height,
