@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Search,
-  Filter,
   Image as ImageIcon,
   CheckCircle2,
   Upload,
@@ -12,6 +11,16 @@ import {
   Tag,
 } from 'lucide-react';
 import apiClient from '../api/client';
+
+// Russian plural form for "кадр" (1 кадр, 2 кадра, 5 кадров).
+function framesWord(n) {
+  const a = Math.abs(n) % 100;
+  const b = a % 10;
+  if (a >= 11 && a <= 14) return 'кадров';
+  if (b === 1) return 'кадр';
+  if (b >= 2 && b <= 4) return 'кадра';
+  return 'кадров';
+}
 
 export default function FrameGallery({
   view = 'frames',          // 'folders' | 'frames'
@@ -140,46 +149,50 @@ export default function FrameGallery({
             </span>
           </button>
         )}
-        <div className="flex items-center gap-1">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              className="w-full pl-7 pr-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-200
-                         focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
-              placeholder="№ кадра..."
-              value={searchIdx}
-              onChange={(e) => setSearchIdx(e.target.value)}
-              type="number"
-              min="0"
-            />
-          </div>
-          <button
-            className={`p-1.5 rounded-lg transition text-slate-400 hover:text-slate-200 hover:bg-slate-700 ${
-              filter !== 'all' ? 'bg-slate-700 text-blue-400' : ''
-            }`}
-            onClick={() => setFilter(filter === 'all' ? 'labeled' : filter === 'labeled' ? 'unlabeled' : 'all')}
-            title={`Фильтр: ${filter === 'all' ? 'Все' : filter === 'labeled' ? 'Размеченные' : 'Неразмеченные'}`}
-          >
-            <Filter size={14} />
-          </button>
+        <div className="relative">
+          <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            className="w-full pl-7 pr-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-200
+                       focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+            placeholder="№ кадра..."
+            value={searchIdx}
+            onChange={(e) => setSearchIdx(e.target.value)}
+            type="number"
+            min="0"
+          />
         </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>{filteredFrames.length} загружено / {total} кадров</span>
-          <div className="flex gap-2">
+        {/* Segmented filter control */}
+        <div className="flex p-0.5 bg-slate-800 border border-slate-700 rounded-lg text-[11px] font-medium">
+          {[
+            { id: 'all', label: 'Все', active: 'bg-slate-600 text-white' },
+            { id: 'labeled', label: 'Разм.', active: 'bg-green-600/80 text-white' },
+            { id: 'unlabeled', label: 'Неразм.', active: 'bg-amber-600/80 text-white' },
+          ].map((f) => (
             <button
-              className={`px-1.5 py-0.5 rounded transition ${filter === 'all' ? 'bg-slate-700 text-slate-200' : 'hover:text-slate-300'}`}
-              onClick={() => setFilter('all')}
-            >Все</button>
-            <button
-              className={`px-1.5 py-0.5 rounded transition ${filter === 'labeled' ? 'bg-green-900/40 text-green-400' : 'hover:text-slate-300'}`}
-              onClick={() => setFilter('labeled')}
-            >Разм.</button>
-            <button
-              className={`px-1.5 py-0.5 rounded transition ${filter === 'unlabeled' ? 'bg-yellow-900/40 text-yellow-400' : 'hover:text-slate-300'}`}
-              onClick={() => setFilter('unlabeled')}
-            >Неразм.</button>
-          </div>
+              key={f.id}
+              className={`flex-1 px-1 py-1 rounded-md transition ${
+                filter === f.id ? f.active : 'text-slate-400 hover:text-slate-200'
+              }`}
+              onClick={() => setFilter(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Count summary */}
+        <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
+          <span className="flex items-center gap-1">
+            <ImageIcon size={12} className="text-slate-600" />
+            <span className="text-slate-200 font-semibold tabular-nums">{total}</span>
+            <span>{framesWord(total)}</span>
+          </span>
+          {(filter !== 'all' || searchIdx)
+            ? <span className="tabular-nums">показано {filteredFrames.length}</span>
+            : frames.length < total
+              ? <span className="tabular-nums">загружено {frames.length}</span>
+              : null}
         </div>
       </div>
 
