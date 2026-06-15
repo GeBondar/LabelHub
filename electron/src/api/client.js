@@ -26,7 +26,7 @@ function extractErrorMessage(error) {
   if (detail && typeof detail === 'object') {
     return detail.msg || JSON.stringify(detail);
   }
-  return error.message || 'Неизвестная ошибка';
+  return error.message || 'Unknown error';
 }
 
 api.interceptors.response.use(
