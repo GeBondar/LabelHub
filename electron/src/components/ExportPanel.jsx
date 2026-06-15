@@ -12,26 +12,49 @@ import {
 } from 'lucide-react';
 import { useApp } from '../App';
 import apiClient from '../api/client';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'Export dataset': 'Экспорт датасета',
+  'Export format': 'Формат экспорта',
+  'Train / Val / Test split': 'Разделение Train / Val / Test',
+  'The sum must be 100%': 'Сумма должна быть 100%',
+  'Data augmentation': 'Аугментация данных',
+  'Images per frame:': 'Изображений на кадр:',
+  'Output file name': 'Имя выходного файла',
+  'Export...': 'Экспорт...',
+  'Export complete': 'Экспорт завершён',
+  'Previous exports': 'Предыдущие экспорты',
+  'Download': 'Скачать',
+  'Run export': 'Экспортировать',
+  'Export error': 'Ошибка экспорта',
+  'Export complete: train={train} val={val} test={test}':
+    'Экспорт завершён: train={train} val={val} test={test}',
+  'YOLO with oriented bbox (class x1 y1 … x4 y4)': 'YOLO с ориентированными bbox (class x1 y1 … x4 y4)',
+  'YOLO detection (class cx cy w h)': 'YOLO детекция (class cx cy w h)',
+  'YOLO instance segmentation (class x1 y1 … xn yn)': 'YOLO instance-сегментация (class x1 y1 … xn yn)',
+  'Pascal VOC XML (rotation as robndbox)': 'Pascal VOC XML (ротация как robndbox)',
+});
 
 const YOLO_FORMAT = {
   obb: {
     id: 'yolov8-obb',
     name: 'YOLOv8-OBB',
-    desc: 'YOLO с ориентированными bbox (class x1 y1 … x4 y4)',
+    desc: 'YOLO with oriented bbox (class x1 y1 … x4 y4)',
     ext: '.txt',
     structure: 'images/train/, images/val/, labels/train/, labels/val/',
   },
   detect: {
     id: 'yolov8-detect',
     name: 'YOLOv8 Detect',
-    desc: 'YOLO детекция (class cx cy w h)',
+    desc: 'YOLO detection (class cx cy w h)',
     ext: '.txt',
     structure: 'images/train/, images/val/, labels/train/, labels/val/',
   },
   segment: {
     id: 'yolov8-seg',
     name: 'YOLOv8 Segment',
-    desc: 'YOLO instance-сегментация (class x1 y1 … xn yn)',
+    desc: 'YOLO instance segmentation (class x1 y1 … xn yn)',
     ext: '.txt',
     structure: 'images/train/, images/val/, labels/train/, labels/val/',
   },
@@ -48,7 +71,7 @@ const COCO_FORMAT = {
 const VOC_FORMAT = {
   id: 'pascal-voc',
   name: 'Pascal VOC',
-  desc: 'Pascal VOC XML (ротация как robndbox)',
+  desc: 'Pascal VOC XML (rotation as robndbox)',
   ext: '.xml',
   structure: 'Annotations/, ImageSets/Main/, JPEGImages/',
 };
@@ -61,7 +84,7 @@ function formatsForTask(taskType) {
 }
 
 export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
-  const { addToast } = useApp();
+  const { addToast, t } = useApp();
   const EXPORT_FORMATS = formatsForTask(taskType);
   const [format, setFormat] = useState(EXPORT_FORMATS[0].id);
   const [trainSplit, setTrainSplit] = useState(70);
@@ -137,11 +160,11 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
 
       setExportDone(true);
       setExportProgress(100);
-      addToast(`Экспорт завершён: train=${exportData.train_count} val=${exportData.val_count} test=${exportData.test_count}`, 'success');
+      addToast(t('Export complete: train={train} val={val} test={test}', { train: exportData.train_count, val: exportData.val_count, test: exportData.test_count }), 'success');
       loadExports();
     } catch (err) {
-      setError(err.message || 'Ошибка экспорта');
-      addToast('Ошибка экспорта', 'error');
+      setError(err.message || t('Export error'));
+      addToast(t('Export error'), 'error');
     } finally {
       setExporting(false);
     }
@@ -155,7 +178,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Download size={20} className="text-blue-400" />
-            Экспорт датасета
+            {t('Export dataset')}
           </h2>
           <button className="p-1 hover:bg-slate-700 rounded-lg transition" onClick={onClose}>
             <X size={18} />
@@ -164,7 +187,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
 
         {/* Format Selection */}
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-2 font-medium">Формат экспорта</label>
+          <label className="block text-sm text-slate-400 mb-2 font-medium">{t('Export format')}</label>
           <div className="space-y-2">
             {EXPORT_FORMATS.map((f) => (
               <label
@@ -185,7 +208,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
                 />
                 <div className="flex-1">
                   <div className="font-medium text-sm text-slate-200">{f.name}</div>
-                  <div className="text-xs text-slate-400 mt-0.5">{f.desc}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{t(f.desc)}</div>
                   <div className="text-[10px] text-slate-500 mt-1 font-mono">{f.structure}</div>
                 </div>
               </label>
@@ -196,7 +219,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
         {/* Split */}
         <div className="mb-4">
           <label className="block text-sm text-slate-400 mb-2 font-medium">
-            Разделение Train / Val / Test
+            {t('Train / Val / Test split')}
           </label>
           <div className="space-y-2">
             <div>
@@ -243,7 +266,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
             </div>
           </div>
           {trainSplit + valSplit + testSplit !== 100 && (
-            <p className="text-xs text-red-400 mt-1">Сумма должна быть 100%</p>
+            <p className="text-xs text-red-400 mt-1">{t('The sum must be 100%')}</p>
           )}
         </div>
 
@@ -256,11 +279,11 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
               checked={augmentation}
               onChange={(e) => setAugmentation(e.target.checked)}
             />
-            Аугментация данных
+            {t('Data augmentation')}
           </label>
           {augmentation && (
             <div className="flex items-center gap-2 ml-6">
-              <span className="text-xs text-slate-400">Изображений на кадр:</span>
+              <span className="text-xs text-slate-400">{t('Images per frame:')}</span>
               <input
                 type="number"
                 min="1"
@@ -276,7 +299,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
 
         {/* Output Name */}
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-1 font-medium">Имя выходного файла</label>
+          <label className="block text-sm text-slate-400 mb-1 font-medium">{t('Output file name')}</label>
           <input
             className="input-field"
             value={outputName}
@@ -289,7 +312,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
         {(exporting || exportDone) && (
           <div className="mb-4">
             <div className="flex justify-between text-xs text-slate-400 mb-1">
-              <span>{exporting ? 'Экспорт...' : 'Экспорт завершён'}</span>
+              <span>{exporting ? t('Export...') : t('Export complete')}</span>
               <span>{exportProgress}%</span>
             </div>
             <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
@@ -310,7 +333,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
         {/* Previous Exports */}
         {previousExports.length > 0 && (
           <div className="mb-4 border-t border-slate-700 pt-4">
-            <h3 className="text-sm font-medium text-slate-400 mb-2">Предыдущие экспорты</h3>
+            <h3 className="text-sm font-medium text-slate-400 mb-2">{t('Previous exports')}</h3>
             <div className="space-y-1">
               {previousExports.map((exp) => (
                 <div key={exp.id} className="flex items-center justify-between p-2 rounded bg-slate-700/30 text-xs">
@@ -325,7 +348,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
                     download
                   >
                     <Download size={12} />
-                    Скачать
+                    {t('Download')}
                   </a>
                 </div>
               ))}
@@ -335,7 +358,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
 
         <div className="flex justify-end gap-3">
           <button className="btn-secondary" onClick={onClose} disabled={exporting}>
-            Закрыть
+            {t('Close')}
           </button>
           <button
             className="btn-primary flex items-center gap-2"
@@ -347,7 +370,7 @@ export default function ExportPanel({ projectId, taskType = 'obb', onClose }) {
             ) : (
               <Download size={16} />
             )}
-            {exportDone ? 'Готово' : 'Экспортировать'}
+            {exportDone ? t('Done') : t('Run export')}
           </button>
         </div>
       </div>

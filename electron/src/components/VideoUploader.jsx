@@ -13,11 +13,36 @@ import {
 import { useDropzone } from 'react-dropzone';
 import { useApp } from '../App';
 import apiClient from '../api/client';
+import { addTranslations } from '../i18n';
+
+addTranslations({
+  'Video upload': 'Загрузка видео',
+  'Failed to read the file ({status})': 'Не удалось прочитать файл ({status})',
+  'File is empty or unavailable': 'Файл пуст или недоступен',
+  'Video uploaded': 'Видео загружено',
+  'Upload error': 'Ошибка загрузки',
+  'Starting frame extraction...': 'Начало извлечения кадров...',
+  'Frames extracted': 'Кадры извлечены',
+  'Frame extraction error': 'Ошибка извлечения кадров',
+  'Unknown': 'Неизвестно',
+  'B': 'Б', 'KB': 'КБ', 'MB': 'МБ', 'GB': 'ГБ',
+  'Drop the file to upload': 'Отпустите файл для загрузки',
+  'Drag a video here': 'Перетащите видео сюда',
+  'MP4, AVI, MOV, MKV, WebM (up to 10 GB)': 'MP4, AVI, MOV, MKV, WebM (до 10 ГБ)',
+  'Or choose a file': 'Или выберите файл',
+  'Uploading...': 'Загрузка...',
+  'Upload': 'Загрузить',
+  'Video uploaded successfully': 'Видео загружено успешно',
+  'Frame rate to extract (FPS)': 'Частота кадров для извлечения (FPS)',
+  'Recommended 2–5 FPS for annotation': 'Рекомендуется 2-5 FPS для аннотации',
+  'Extracting frames...': 'Извлечение кадров...',
+  'Extract frames': 'Извлечь кадры',
+});
 
 const FPS_OPTIONS = [0.5, 1, 2, 5, 10, 15, 30];
 
 export default function VideoUploader({ projectId, onClose, onComplete }) {
-  const { addToast } = useApp();
+  const { addToast, t } = useApp();
   const [file, setFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
@@ -78,9 +103,9 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
             // (spaces etc.). 'file://C:\...' would silently fail to load.
             const url = 'file:///' + encodeURI(file.path.replace(/\\/g, '/'));
             const res = await fetch(url);
-            if (!res.ok) throw new Error(`Не удалось прочитать файл (${res.status})`);
+            if (!res.ok) throw new Error(t('Failed to read the file ({status})', { status: res.status }));
             const blob = await res.blob();
-            if (!blob.size) throw new Error('Файл пуст или недоступен');
+            if (!blob.size) throw new Error(t('File is empty or unavailable'));
             return new File([blob], file.name, { type: blob.type || 'video/mp4' });
           })()
         : file;
@@ -91,9 +116,9 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
 
       setVideoId(res.data.video_id || res.data.id);
       setUploaded(true);
-      addToast('Видео загружено', 'success');
+      addToast(t('Video uploaded'), 'success');
     } catch (err) {
-      setError(err.message || 'Ошибка загрузки');
+      setError(err.message || t('Upload error'));
     } finally {
       setUploading(false);
     }
@@ -102,7 +127,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
   const handleExtract = async () => {
     if (!videoId) return;
     setExtracting(true);
-    setExtractStep('Начало извлечения кадров...');
+    setExtractStep(t('Starting frame extraction...'));
     setError('');
 
     wsUnsubRef.current = apiClient.onWsMessage((data) => {
@@ -117,13 +142,13 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
     try {
       await apiClient.extractFrames(videoId, selectedFps);
       setExtractDone(true);
-      addToast('Кадры извлечены', 'success');
+      addToast(t('Frames extracted'), 'success');
       setTimeout(() => {
         onComplete();
         onClose();
       }, 1500);
     } catch (err) {
-      setError(err.message || 'Ошибка извлечения кадров');
+      setError(err.message || t('Frame extraction error'));
     } finally {
       setExtracting(false);
       if (wsUnsubRef.current) {
@@ -134,8 +159,8 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
   };
 
   const formatSize = (bytes) => {
-    if (!bytes) return 'Неизвестно';
-    const units = ['Б', 'КБ', 'МБ', 'ГБ'];
+    if (!bytes) return t('Unknown');
+    const units = [t('B'), t('KB'), t('MB'), t('GB')];
     let i = 0;
     let size = bytes;
     while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
@@ -148,7 +173,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Film size={20} className="text-blue-400" />
-            Загрузка видео
+            {t('Video upload')}
           </h2>
           <button className="p-1 hover:bg-slate-700 rounded-lg transition" onClick={onClose}>
             <X size={18} />
@@ -168,11 +193,11 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
               <input {...getInputProps()} />
               <Upload size={40} className="mx-auto mb-3 text-slate-500" />
               {isDragActive ? (
-                <p className="text-blue-400 font-medium">Отпустите файл для загрузки</p>
+                <p className="text-blue-400 font-medium">{t('Drop the file to upload')}</p>
               ) : (
                 <>
-                  <p className="text-slate-300 font-medium">Перетащите видео сюда</p>
-                  <p className="text-sm text-slate-500 mt-1">MP4, AVI, MOV, MKV, WebM (до 10 ГБ)</p>
+                  <p className="text-slate-300 font-medium">{t('Drag a video here')}</p>
+                  <p className="text-sm text-slate-500 mt-1">{t('MP4, AVI, MOV, MKV, WebM (up to 10 GB)')}</p>
                 </>
               )}
               <button
@@ -180,7 +205,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
                 className="btn-secondary mt-4 text-xs"
                 onClick={(e) => { e.stopPropagation(); handleBrowse(); }}
               >
-                Или выберите файл
+                {t('Or choose a file')}
               </button>
             </div>
 
@@ -197,7 +222,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
             {uploading && (
               <div className="mt-4">
                 <div className="flex justify-between text-xs text-slate-400 mb-1">
-                  <span>Загрузка...</span>
+                  <span>{t('Uploading...')}</span>
                   <span>{uploadProgress}%</span>
                 </div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
@@ -216,7 +241,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
             )}
 
             <div className="flex justify-end gap-3 mt-4">
-              <button className="btn-secondary" onClick={onClose}>Отмена</button>
+              <button className="btn-secondary" onClick={onClose}>{t('Cancel')}</button>
               <button
                 className="btn-primary flex items-center gap-2"
                 onClick={handleUpload}
@@ -227,7 +252,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
                 ) : (
                   <Upload size={16} />
                 )}
-                Загрузить
+                {t('Upload')}
               </button>
             </div>
           </>
@@ -236,14 +261,14 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
             <div className="flex items-center gap-3 mb-4 p-3 bg-green-900/20 border border-green-700/30 rounded-lg">
               <CheckCircle2 size={20} className="text-green-400" />
               <div>
-                <p className="text-sm font-medium text-green-300">Видео загружено успешно</p>
+                <p className="text-sm font-medium text-green-300">{t('Video uploaded successfully')}</p>
                 <p className="text-xs text-green-400/70">{file?.name}</p>
               </div>
             </div>
 
             <div className="mb-4">
               <label className="block text-sm text-slate-400 mb-2">
-                Частота кадров для извлечения (FPS)
+                {t('Frame rate to extract (FPS)')}
               </label>
               <div className="flex gap-2 flex-wrap">
                 {FPS_OPTIONS.map((fps) => (
@@ -261,7 +286,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
                 ))}
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Рекомендуется 2-5 FPS для аннотации
+                {t('Recommended 2–5 FPS for annotation')}
               </p>
             </div>
 
@@ -270,7 +295,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
                 <div className="flex justify-between text-xs text-slate-400 mb-1">
                   <span className="flex items-center gap-1">
                     {extracting && <Zap size={12} className="text-yellow-400" />}
-                    {extractStep || 'Извлечение кадров...'}
+                    {extractStep || t('Extracting frames...')}
                   </span>
                   <span>{Math.round(extractProgress)}%</span>
                 </div>
@@ -290,7 +315,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
             )}
 
             <div className="flex justify-end gap-3">
-              <button className="btn-secondary" onClick={onClose}>Закрыть</button>
+              <button className="btn-secondary" onClick={onClose}>{t('Close')}</button>
               <button
                 className="btn-primary flex items-center gap-2"
                 onClick={handleExtract}
@@ -301,7 +326,7 @@ export default function VideoUploader({ projectId, onClose, onComplete }) {
                 ) : (
                   <Play size={16} />
                 )}
-                {extractDone ? 'Готово' : 'Извлечь кадры'}
+                {extractDone ? t('Done') : t('Extract frames')}
               </button>
             </div>
           </>
