@@ -172,30 +172,48 @@ class TrainingService:
         log_path = os.path.join(runs_root, f"{run_name}.log")
         log_file = open(log_path, "w", encoding="utf-8")
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            stdout=log_file,
-            stderr=asyncio.subprocess.STDOUT,
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                stdout=log_file,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+        except Exception:
+            # Spawn failed: close the log handle we just opened (otherwise it
+            # leaks) and mark the run failed so it doesn't sit forever as pending.
+            log_file.close()
+            async with async_session_factory() as db:
+                run = await db.get(TrainingRun, run_id)
+                if run:
+                    run.status = "failed"
+                    run.error = "Failed to start training process"
+                    run.finished_at = datetime.datetime.utcnow()
+                    await db.commit()
+            raise
 
+        # Register and start the monitor immediately — before the DB update — so a
+        # spawned process can never end up running without a task that can stop it
+        # and close its log handle. _monitor's finally block owns log_file from here.
         self.runs[run_id] = {"process": proc, "stop": False, "log_file": log_file}
+        task = asyncio.create_task(self._monitor(run_id, proc, run_dir, epochs, log_file))
+        self.runs[run_id]["task"] = task
 
-        async with async_session_factory() as db:
-            run = await db.get(TrainingRun, run_id)
-            if run:
-                run.status = "running"
-                run.pid = proc.pid
-                run.started_at = datetime.datetime.utcnow()
-                await db.commit()
+        try:
+            async with async_session_factory() as db:
+                run = await db.get(TrainingRun, run_id)
+                if run:
+                    run.status = "running"
+                    run.pid = proc.pid
+                    run.started_at = datetime.datetime.utcnow()
+                    await db.commit()
+        except Exception as e:
+            print(f"[training] could not update run {run_id} status: {e}", flush=True)
 
         await ws_manager.broadcast({
             "type": "training", "run_id": run_id, "status": "running",
-            "message": "Обучение запущено", "epoch": 0, "total_epochs": epochs,
+            "message": "Training started", "epoch": 0, "total_epochs": epochs,
         })
-
-        task = asyncio.create_task(self._monitor(run_id, proc, run_dir, epochs, log_file))
-        self.runs[run_id]["task"] = task
 
     # ----------------------------------------------------------------- monitor
     async def _monitor(self, run_id: int, proc, run_dir: str, total_epochs: int, log_file):
@@ -292,14 +310,14 @@ class TrainingService:
                 run.status = status
                 run.finished_at = datetime.datetime.utcnow()
                 if status == "failed" and not run.error:
-                    run.error = f"Процесс завершился с кодом {returncode}"
+                    run.error = f"Process exited with code {returncode}"
                 await db.commit()
         await ws_manager.broadcast({
             "type": "training", "run_id": run_id, "status": status,
             "message": {
-                "completed": "Обучение завершено",
-                "stopped": "Обучение остановлено",
-                "failed": "Ошибка обучения (см. лог)",
+                "completed": "Training complete",
+                "stopped": "Training stopped",
+                "failed": "Training error (see log)",
             }.get(status, status),
         })
 

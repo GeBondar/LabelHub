@@ -66,6 +66,11 @@ function AppProvider({ children }) {
     const unsub = apiClient.onWsMessage((data) => {
       if (data.type === 'error') {
         addToast(data.message, 'error');
+      } else if (data.type === 'connected') {
+        // The WebSocket reflects backend liveness faster than the 15s health poll.
+        setBackendStatus('connected');
+      } else if (data.type === 'disconnected') {
+        setBackendStatus('disconnected');
       }
     });
     return () => {
@@ -267,6 +272,18 @@ function AppHeader() {
   );
 }
 
+function ConnectionBanner() {
+  const { backendStatus, t } = useApp();
+  // 'checking' is the brief startup state; only warn once we know it's down so
+  // the banner doesn't flash on every launch.
+  if (backendStatus !== 'disconnected') return null;
+  return (
+    <div className="bg-red-600 text-white text-xs font-medium text-center py-1.5 px-4 flex-shrink-0 z-30">
+      {t('Backend disconnected — reconnecting…')}
+    </div>
+  );
+}
+
 function ToastContainer() {
   const { toasts, removeToast } = useApp();
   if (!toasts.length) return null;
@@ -325,6 +342,7 @@ export default function App() {
         <Router>
           <div className="h-full flex flex-col">
             <AppHeader />
+            <ConnectionBanner />
             <main className="flex-1 overflow-hidden">
               <Routes>
                 <Route path="/" element={<ProjectList />} />

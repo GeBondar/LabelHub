@@ -29,6 +29,7 @@ const RU = {
   'Models': 'Модели',
   'Server error: {msg}': 'Ошибка сервера: {msg}',
   'Language': 'Язык',
+  'Backend disconnected — reconnecting…': 'Бэкенд отключён — переподключение…',
 
   // --- common toasts / errors ---
   'Failed to load projects': 'Не удалось загрузить проекты',

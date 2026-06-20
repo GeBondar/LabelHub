@@ -58,6 +58,23 @@ def main() -> int:
 
     model = YOLO(args.model)
 
+    # If a CUDA device was requested but no GPU is actually available, fall back
+    # to CPU rather than failing with a cryptic torch/Ultralytics error. The
+    # marker line is picked up by the parent and shown to the user.
+    device = args.device
+    if device not in ("", "cpu"):
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                print(
+                    f"DEVICE_FALLBACK: requested device '{device}' but no CUDA GPU "
+                    "is available — training on CPU instead.",
+                    flush=True,
+                )
+                device = "cpu"
+        except Exception:
+            device = "cpu"
+
     train_kwargs = dict(
         data=args.data,
         epochs=args.epochs,
@@ -68,8 +85,8 @@ def main() -> int:
         exist_ok=True,
         plots=True,
     )
-    if args.device != "":
-        train_kwargs["device"] = args.device
+    if device != "":
+        train_kwargs["device"] = device
 
     model.train(**train_kwargs)
     print("TRAINING_DONE", flush=True)
