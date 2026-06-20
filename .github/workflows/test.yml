@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  backend-tests:
+    name: Backend tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install backend dependencies (test subset)
+        # The test suite imports the FastAPI app but never loads torch /
+        # ultralytics / tensorboard (they are imported lazily at train/infer
+        # time), so we skip those multi-GB wheels to keep CI fast. If a
+        # top-level import of them is ever added, this step will fail loudly.
+        run: |
+          grep -vE '^(torch|torchvision|ultralytics|tensorboard)\b' backend/requirements.txt > requirements-ci.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements-ci.txt
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run pytest
+        run: python -m pytest
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install dependencies
+        working-directory: electron
+        run: npm ci
+
+      - name: Build web bundle
+        working-directory: electron
+        run: npm run build:web

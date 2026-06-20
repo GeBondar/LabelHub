@@ -22,8 +22,14 @@ if not exist ".venv\Scripts\python.exe" (
 call ".venv\Scripts\activate.bat"
 
 echo [2/4] Installing backend dependencies (downloads PyTorch - this can take a while)...
-python -m pip install --upgrade pip >nul
-pip install -r backend\requirements.txt || (echo [ERROR] Backend install failed. && exit /b 1)
+python -m pip install --upgrade pip
+pip install -r backend\requirements.txt || (
+    echo [ERROR] Backend dependency install failed.
+    echo         Common causes: no internet connection, or missing
+    echo         "Microsoft C++ Build Tools" needed to build some packages
+    echo         ^(https://visualstudio.microsoft.com/visual-cpp-build-tools/^).
+    exit /b 1
+)
 
 echo [3/4] Installing frontend dependencies...
 pushd electron

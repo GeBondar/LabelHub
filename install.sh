@@ -18,8 +18,13 @@ echo "[1/4] Creating Python virtual environment (.venv)..."
 source .venv/bin/activate
 
 echo "[2/4] Installing backend dependencies (downloads PyTorch - this can take a while)..."
-python -m pip install --upgrade pip >/dev/null
-pip install -r backend/requirements.txt
+python -m pip install --upgrade pip
+if ! pip install -r backend/requirements.txt; then
+  echo "[ERROR] Backend dependency install failed."
+  echo "        Check your internet connection and that build tools / Python"
+  echo "        headers are available for packages that compile from source."
+  exit 1
+fi
 
 echo "[3/4] Installing frontend dependencies..."
 cd electron
