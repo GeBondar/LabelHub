@@ -3,13 +3,13 @@ import re
 import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from backend.database import get_db
-from backend.config import config
+from backend.config import config, is_safe_name
 from backend.models.project import Project, ClassLabel
 from backend.models.annotation import Frame, OrientedBBox
 from backend.services.export_service import export_service
@@ -27,6 +27,15 @@ class ExportRequest(BaseModel):
     apply_augmentation: bool = False
     augmentation_count: int = Field(default=3, ge=0, le=20)
     output_name: str = Field(default="export", min_length=1, max_length=255)
+
+    @field_validator("output_name")
+    @classmethod
+    def _safe_output_name(cls, v: str) -> str:
+        # The export folder is created on disk under the project's exports/
+        # directory, so the name must not contain path separators or traversal.
+        if not is_safe_name(v):
+            raise ValueError("output_name must not contain path separators or '..'")
+        return v
 
 
 class ExportResponse(BaseModel):
@@ -126,7 +135,7 @@ async def export_dataset(
     aug_supported = data.format in ("yolov8-obb", "yolov8-detect") and task_type in ("obb", "detect")
     if data.apply_augmentation and data.format == "yolov8-seg":
         await ws_manager.send_progress(
-            task_id, 65, "Аугментация пропущена: не поддерживается для сегментации."
+            task_id, 65, "Augmentation skipped: not supported for segmentation."
         )
     if data.apply_augmentation and aug_supported and data.augmentation_count > 0:
         from PIL import Image as _PILImage
@@ -417,7 +426,13 @@ async def _import_yolo(project_id: int, base_path: str, data: ImportDirRequest, 
         nonlocal next_index
         # Explicit override from the request wins.
         if str(src_idx) in data.class_mapping:
-            return int(data.class_mapping[str(src_idx)])
+            try:
+                return int(data.class_mapping[str(src_idx)])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid class id in class_mapping for source index {src_idx}",
+                )
         if src_idx in by_index:
             return by_index[src_idx].id
         # Auto-create a class, preferring the name from data.yaml.
@@ -537,8 +552,8 @@ async def _import_yolo(project_id: int, base_path: str, data: ImportDirRequest, 
 
             imported += 1
             if imported % 10 == 0:
-                await ws_manager.send_progress(task_id, min(imported * 2, 99), f"Импортировано {imported} изображений...")
+                await ws_manager.send_progress(task_id, min(imported * 2, 99), f"Imported {imported} images...")
 
     await db.flush()
-    await ws_manager.send_progress(task_id, 100, f"Импорт завершён: {imported} изображений")
+    await ws_manager.send_progress(task_id, 100, f"Import complete: {imported} images")
     return {"imported": imported, "project_id": project_id}

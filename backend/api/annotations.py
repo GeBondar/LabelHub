@@ -41,15 +41,17 @@ class BBoxUpdate(BaseModel):
 
 
 class SAM2ClickRequest(BaseModel):
-    x: float
-    y: float
+    # Pixel coordinates in the source image. Bounded so a stray value can't
+    # crash OpenCV/numpy deep inside SAM2 with an opaque 500.
+    x: float = Field(..., ge=-1e6, le=1e6)
+    y: float = Field(..., ge=-1e6, le=1e6)
 
 
 class SAM2BoxRequest(BaseModel):
-    x1: float
-    y1: float
-    x2: float
-    y2: float
+    x1: float = Field(..., ge=-1e6, le=1e6)
+    y1: float = Field(..., ge=-1e6, le=1e6)
+    x2: float = Field(..., ge=-1e6, le=1e6)
+    y2: float = Field(..., ge=-1e6, le=1e6)
 
 
 class FrameStatusUpdate(BaseModel):
@@ -150,6 +152,10 @@ async def create_bbox(
     cls = await db.get(ClassLabel, data.class_id)
     if not cls:
         raise HTTPException(status_code=404, detail="Class label not found")
+    if cls.project_id != frame.project_id:
+        raise HTTPException(
+            status_code=400, detail="Class does not belong to this frame's project"
+        )
 
     cx, cy, width, height = data.cx, data.cy, data.width, data.height
     points_json = None
@@ -210,6 +216,18 @@ async def update_bbox(
         raise HTTPException(status_code=404, detail="Annotation not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    # Reassigning the class must stay within the annotation's own project.
+    new_class_id = update_data.get("class_id")
+    if new_class_id is not None and new_class_id != bbox.class_id:
+        cls = await db.get(ClassLabel, new_class_id)
+        if not cls:
+            raise HTTPException(status_code=404, detail="Class label not found")
+        frame = await db.get(Frame, bbox.frame_id)
+        if frame and cls.project_id != frame.project_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Class does not belong to this annotation's project",
+            )
     # A new polygon redefines the shape: store it and recompute the bbox fields,
     # which take precedence over any cx/cy/width/height passed alongside.
     new_points = update_data.pop("points", None)

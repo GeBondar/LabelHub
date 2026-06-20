@@ -14,7 +14,8 @@ Draw boxes, oriented boxes or polygons (with one-click **SAM2** magic), then tra
 ![Electron](https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white)
 ![YOLO](https://img.shields.io/badge/Ultralytics-YOLO11%20%7C%20YOLOv8-0b5394)
 ![Platform](https://img.shields.io/badge/Windows-primary-0078D6?logo=windows&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-42%20passing-2ea44f)
+![Status](https://img.shields.io/badge/status-beta-orange)
+[![CI](https://github.com/GeBondar/LabelHub/actions/workflows/test.yml/badge.svg)](https://github.com/GeBondar/LabelHub/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/License-MIT-2ea44f)
 
 </div>
@@ -74,9 +75,17 @@ without ever leaving the window:
 
 ## 🚀 Quick start
 
+> [!NOTE]
+> **This is a Beta** (`v1.0.0-beta.1`), distributed as a **source install** — clone the repo and
+> run the setup script below. A packaged one-click installer is planned for v1.0.
+
 > **Prerequisites:** [Python 3.10+](https://www.python.org/downloads/) and
-> [Node.js 18+](https://nodejs.org/) on your `PATH`. A CUDA GPU is optional but makes training and the
-> live tester much faster.
+> [Node.js 18+](https://nodejs.org/) on your `PATH`. [ffmpeg](https://ffmpeg.org/download.html) is
+> needed for video → frames (importing existing datasets works without it). A CUDA GPU is optional but
+> makes training and the live tester much faster.
+>
+> **Supported platforms:** **Windows 11/10 (tested)**; **Linux / macOS (community-supported)** —
+> please report issues if you hit them.
 
 ### Windows
 
@@ -191,6 +200,13 @@ cd electron && npm start
 The data directory (SQLite DB, frames, exports, training runs) lives in `data/` and is git-ignored.
 Set `LABELHUB_DATA_DIR` to use a different workspace.
 
+> [!IMPORTANT]
+> **Before upgrading, back up `data/labelhub.db`** — schema migrations are applied in place.
+> **Don't move the `data/` directory** after creating projects; some stored paths are absolute.
+
+**Versioning:** LabelHub follows [Semantic Versioning](https://semver.org/). Beta builds use a
+`-beta.N` suffix (e.g. `v1.0.0-beta.1`). See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ---
 
 ## ❓ FAQ
@@ -203,10 +219,28 @@ Set `LABELHUB_DATA_DIR` to use a different workspace.
 
 ---
 
+## 🩺 Troubleshooting
+
+- **`install` fails while installing PyTorch** — usually a flaky network, or (on Windows) missing
+  [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) needed to
+  build some packages. Re-run the installer; it resumes from the cache.
+- **"Video → frames" does nothing / errors** — install [ffmpeg](https://ffmpeg.org/download.html) and
+  make sure `ffmpeg` and `ffprobe` are on your `PATH`. The backend logs a warning at startup if they're missing.
+- **A red "Backend disconnected" banner appears** — the Python backend isn't reachable. Check the
+  terminal where you launched the app for an error, then restart it.
+- **App won't start / "port in use"** — another LabelHub (or a leftover `uvicorn`) may be holding port
+  `8787`. Close other instances; the app now takes a single-instance lock to prevent this.
+- **Training "device" error on a machine without a GPU** — fixed: a GPU request now falls back to CPU
+  automatically (with a note in the log).
+
+---
+
 ## 🤝 Contributing
 
-Issues and pull requests are welcome! Please run `python -m pytest` and `npm run build:web` before
-submitting. For larger changes, open an issue first to discuss the direction.
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the
+pre-submission checklist (`python -m pytest` and `npm run build:web`). Please follow the
+[Code of Conduct](CODE_OF_CONDUCT.md), and report security issues per the [Security Policy](SECURITY.md).
+For larger changes, open an issue first to discuss the direction.
 
 ## 📄 License
 

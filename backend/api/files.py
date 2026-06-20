@@ -4,13 +4,15 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from backend.config import config
+from backend.config import config, is_safe_name
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 
-@router.get("/image/{project_id}/{image_name:path}")
+@router.get("/image/{project_id}/{image_name}")
 async def serve_image(project_id: int, image_name: str):
+    if not is_safe_name(image_name):
+        raise HTTPException(status_code=400, detail="Invalid image name")
     filepath = os.path.join(config.DATA_DIR, "projects", str(project_id), "frames")
     for root, dirs, files in os.walk(filepath):
         if image_name in files:
@@ -23,6 +25,8 @@ async def serve_image(project_id: int, image_name: str):
 
 @router.get("/export/{project_id}/{export_name}/download")
 async def download_export(project_id: int, export_name: str):
+    if not is_safe_name(export_name):
+        raise HTTPException(status_code=400, detail="Invalid export name")
     export_dir = os.path.join(
         config.DATA_DIR, "projects", str(project_id), "exports", export_name
     )

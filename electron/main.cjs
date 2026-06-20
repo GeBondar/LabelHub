@@ -126,6 +126,43 @@ function startPythonBackend() {
   });
 }
 
+// Stop the backend and wait until it has actually exited. On POSIX a bare
+// kill() sends SIGTERM, which uvicorn may take a moment to honour (and could
+// ignore), so escalate to SIGKILL after a grace period. Returning a promise
+// lets `before-quit` hold the app open until the port and SQLite lock are
+// released — otherwise a relaunch hits a zombie holding port 8787.
+function stopPythonBackend() {
+  return new Promise((resolve) => {
+    const proc = pythonProcess;
+    if (!proc) return resolve();
+    pythonProcess = null;
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    const killTimer = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch (e) { /* already gone */ }
+      finish();
+    }, 3000);
+
+    proc.once('close', () => {
+      clearTimeout(killTimer);
+      finish();
+    });
+
+    try {
+      proc.kill();
+    } catch (e) {
+      clearTimeout(killTimer);
+      finish();
+    }
+  });
+}
+
 // Backend import pulls in torch + ultralytics, which can take 20-40s on a cold
 // start, so allow generous headroom before declaring it unreachable.
 function waitForBackend(retries = 120, interval = 500) {
@@ -278,6 +315,21 @@ function setupIpcHandlers() {
 }
 
 app.whenReady().then(async () => {
+  // A second instance would spawn another backend on port 8787 and open the
+  // same SQLite database (single-writer), risking "database is locked" errors
+  // and corruption. Refuse to start twice; focus the running window instead.
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
+  app.on('second-instance', () => {
+    const win = mainWindow || splashWindow;
+    if (win && !win.isDestroyed()) {
+      if (typeof win.isMinimized === 'function' && win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+
   // Identify the app to Windows so the taskbar groups under our own icon
   // instead of the generic Electron one. Guard it: a failure here must never
   // abort startup (which would take down the splash + backend with it).
@@ -317,20 +369,22 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('window-all-closed', () => {
-  if (pythonProcess) {
-    pythonProcess.kill();
-    pythonProcess = null;
-  }
+app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin') {
+    await stopPythonBackend();
     app.quit();
   }
 });
 
-app.on('before-quit', () => {
-  if (pythonProcess) {
-    pythonProcess.kill();
-    pythonProcess = null;
+// Hold the quit until the backend has fully stopped, so port 8787 and the
+// SQLite lock are free for the next launch. The flag prevents re-entering this
+// handler (and double-quitting) once we call app.quit() ourselves.
+let quitting = false;
+app.on('before-quit', (event) => {
+  if (pythonProcess && !quitting) {
+    event.preventDefault();
+    quitting = true;
+    stopPythonBackend().then(() => app.quit());
   }
 });
 
