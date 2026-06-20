@@ -1,6 +1,23 @@
 import os
 
 
+def is_safe_name(name: str) -> bool:
+    """True if ``name`` is a single, safe path segment.
+
+    Rejects empty names, ``.``/``..``, anything containing a path separator
+    (``/`` or ``\\``) or a NUL byte, and any ``..`` traversal sequence. Used to
+    guard user-supplied names (image files, export folders) before joining them
+    onto a base directory, so a request can never escape the project tree.
+    """
+    if not name or name in (".", ".."):
+        return False
+    if "/" in name or "\\" in name or "\x00" in name:
+        return False
+    if ".." in name:
+        return False
+    return True
+
+
 class Config:
     # Data root holds the SQLite DB, project frames, exports and training runs.
     # Override with LABELHUB_DATA_DIR (used by tests and for multiple workspaces).

@@ -7,6 +7,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 
 from backend.database import get_db
+from backend.config import config
 from backend.models.project import Project, ClassLabel
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -150,14 +151,25 @@ async def delete_project(project_id: int, db: AsyncSession = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    await db.delete(project)
-    await db.flush()
-
+    # Delete the files first, failing loudly if we can't. Removing the DB row
+    # first (the previous behaviour) could leave the project's frames/exports
+    # orphaned on disk while reporting success — silent data leakage that grows
+    # the data directory forever. The relative "data/..." path also silently
+    # no-op'd whenever the backend ran from a different working directory.
     import shutil
     import os
-    project_dir = os.path.join("data", "projects", str(project_id))
+    project_dir = os.path.join(config.DATA_DIR, "projects", str(project_id))
     if os.path.exists(project_dir):
-        shutil.rmtree(project_dir, ignore_errors=True)
+        try:
+            shutil.rmtree(project_dir)
+        except OSError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not delete project files: {e}",
+            )
+
+    await db.delete(project)
+    await db.flush()
 
     return {"detail": "Project deleted"}
 
